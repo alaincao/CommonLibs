@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace CommonLib.Utils.Event
+namespace CommonLibs.Utils.Event
 {
 	public interface ITriggerHoldable
 	{

@@ -1,46 +1,67 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Text;
 
-namespace CommonLib.Utils
+namespace CommonLibs.Utils.Event
 {
+// TODO: Alain: Voir System.Data.SqlClient.SqlConnectionStringBuilder
 	public class ConnectionStringHelper
 	{
-		private const string				KEY_SERVER					= "SERVER";
-		private const string				KEY_DATABASE				= "DATABASE";
-		private const string				KEY_USER					= "UID";
-		private const string				KEY_PASSWORD				= "PWD";
-//private const string				KEY_PROVIDER				= "PROVIDERNAME";
-//private const string				VALUE_PROVIDER				= "System.Data.SqlClient";
+		public static string				SampleConnectionString		= "Server='localhost';Database='northwind';User ID='sa';Password='secret'";
+		//public static string				SampleConnectionString		= "Data source='localhost';Initial Catalog='northwind';UID='sa';PWD='secret'";
 
-		public string						Value						{ get { return ValueHelper.Value; } }
-		public Event.IValueHelper<string>	ValueHelper					{ get; private set; }
+		private const string				KEY_SERVER1					= "Server";
+		private const string				KEY_SERVER2					= "Data Source";
+		private const string				KEY_DATABASE1				= "Database";
+		private const string				KEY_DATABASE2				= "Initial Catalog";
+		private const string				KEY_USER1					= "User ID";
+		private const string				KEY_USER2					= "UID";
+		private const string				KEY_PASSWORD1				= "Password";
+		private const string				KEY_PASSWORD2				= "PWD";
+
+		private const string				KEY_SERVER1_UPPER			= "SERVER";
+		private const string				KEY_SERVER2_UPPER			= "DATA SOURCE";
+		private const string				KEY_DATABASE1_UPPER			= "DATABASE";
+		private const string				KEY_DATABASE2_UPPER			= "INITIAL CATALOG";
+		private const string				KEY_USER1_UPPER				= "USER ID";
+		private const string				KEY_USER2_UPPER				= "UID";
+		private const string				KEY_PASSWORD1_UPPER			= "PASSWORD";
+		private const string				KEY_PASSWORD2_UPPER			= "PWD";
+
+		private static readonly string[]	KeysServer					= new string[] { KEY_SERVER1, KEY_SERVER2 };
+		private static readonly string[]	KeysDatabase				= new string[] { KEY_DATABASE1, KEY_DATABASE2 };
+		private static readonly string[]	KeysUser					= new string[] { KEY_USER1, KEY_USER2 };
+		private static readonly string[]	KeysPassword				= new string[] { KEY_PASSWORD1, KEY_PASSWORD2 };
+
+		public string						Value						{ get { return ValueHelper.Value; } set { ValueHelper.Value = value; } }
+		public IValueHelper<string>			ValueHelper					{ get; private set; }
 
 		public string						Server						{ get { return ServerHelper.Value; }	set { ServerHelper.Value = value; } }
-		public Event.ValueHelper<string>	ServerHelper				{ get; private set; }
+		public ValueHelper<string>			ServerHelper				{ get; private set; }
 		public string						Database					{ get { return DatabaseHelper.Value; }	set { DatabaseHelper.Value = value; } }
-		public Event.ValueHelper<string>	DatabaseHelper				{ get; private set; }
+		public ValueHelper<string>			DatabaseHelper				{ get; private set; }
 		public string						User						{ get { return UserHelper.Value; }		set { UserHelper.Value = value; } }
-		public Event.ValueHelper<string>	UserHelper					{ get; private set; }
+		public ValueHelper<string>			UserHelper					{ get; private set; }
 		public string						Password					{ get { return PasswordHelper.Value; }	set { PasswordHelper.Value = value; } }
-		public Event.ValueHelper<string>	PasswordHelper				{ get; private set; }
+		public ValueHelper<string>			PasswordHelper				{ get; private set; }
 
-		public ConnectionStringHelper(Event.IValueHelper<string> valueHelper)
+		public ConnectionStringHelper(IValueHelper<string> valueHelper)
 		{
 			ValueHelper = valueHelper;
 
-			ServerHelper = new Event.ValueHelper<string>();
-			DatabaseHelper = new Event.ValueHelper<string>();
-			UserHelper = new Event.ValueHelper<string>();
-			PasswordHelper = new Event.ValueHelper<string>();
+			ServerHelper = new ValueHelper<string>();
+			DatabaseHelper = new ValueHelper<string>();
+			UserHelper = new ValueHelper<string>();
+			PasswordHelper = new ValueHelper<string>();
 
 			ValueHelper.ValueChanged += ParseConnectionString;
 			ParseConnectionString();
 
-			ServerHelper.ValueChanged += ()=> { SetValue( KEY_SERVER, ServerHelper.Value ); };
-			DatabaseHelper.ValueChanged += ()=> { SetValue( KEY_DATABASE, DatabaseHelper.Value ); };
-			UserHelper.ValueChanged += ()=> { SetValue( KEY_USER, UserHelper.Value ); };
-			PasswordHelper.ValueChanged += ()=> { SetValue( KEY_PASSWORD, PasswordHelper.Value ); };
+			ServerHelper.ValueChanged += ()=> { SetValue( KeysServer, ServerHelper.Value ); };
+			DatabaseHelper.ValueChanged += ()=> { SetValue( KeysDatabase, DatabaseHelper.Value ); };
+			UserHelper.ValueChanged += ()=> { SetValue( KeysUser, UserHelper.Value ); };
+			PasswordHelper.ValueChanged += ()=> { SetValue( KeysPassword, PasswordHelper.Value ); };
 		}
 
 		public string GetConnectionStringWithoutPassword(string replacementString)
@@ -49,9 +70,10 @@ namespace CommonLib.Utils
 			var tokens = GetTokens( ValueHelper.Value );
 
 			// Update the tokens with the new value
+			var keysPassword = KeysPassword.Select( v=>v.ToUpper() ).ToArray();
 			foreach( var pair in tokens )
 			{
-				if( pair[0].ToUpper() == KEY_PASSWORD )
+				if( keysPassword.Contains(pair[0].ToUpper()) )
 				{
 					pair[ 1 ] = replacementString;
 					break;
@@ -115,19 +137,23 @@ namespace CommonLib.Utils
 			{
 				switch( pair[0].ToUpper() )
 				{
-					case KEY_SERVER:
+					case KEY_SERVER1_UPPER:
+					case KEY_SERVER2_UPPER:
 						Server = pair[1];
 						serverPresent = true;
 						break;
-					case KEY_DATABASE:
+					case KEY_DATABASE1_UPPER:
+					case KEY_DATABASE2_UPPER:
 						Database = pair[1];
 						databasePresent = true;
 						break;
-					case KEY_USER:
+					case KEY_USER1_UPPER:
+					case KEY_USER2_UPPER:
 						User = pair[1];
 						userPresent = true;
 						break;
-					case KEY_PASSWORD:
+					case KEY_PASSWORD1_UPPER:
+					case KEY_PASSWORD2_UPPER:
 						Password = pair[1];
 						passwordPresent = true;
 						break;
@@ -143,8 +169,13 @@ namespace CommonLib.Utils
 				Password = null;
 		}
 
-		private void SetValue(string key, string newValue)
+		/// <param name="keys">A list of possible keys. Must contain at least 1 value. The first being the default one.</param>
+		private void SetValue(string[] keys, string newValue)
 		{
+// TODO: Alain: Support for setting 'null' that will remove the token from the ConnectionString
+			System.Diagnostics.Debug.Assert( (keys != null) && (keys.Length > 0), "Parameter 'keys' must contain at least 1 value" );
+			var keysUpper = keys.Select( v=>v.ToUpper() ).ToArray();
+
 			// Split the current connection string
 			var tokens = GetTokens( ValueHelper.Value );
 
@@ -152,7 +183,7 @@ namespace CommonLib.Utils
 			bool found = false;
 			foreach( var pair in tokens )
 			{
-				if( pair[0].ToUpper() == key )
+				if( keysUpper.Contains(pair[0].ToUpper()) )
 				{
 					pair[ 1 ] = newValue;
 					found = true;
@@ -167,7 +198,7 @@ namespace CommonLib.Utils
 				int i;
 				for( i=0; i<tokens.Length; ++i )
 					newTokens[i] = tokens[i];
-				newTokens[ i ] = new string[]{ key, newValue };
+				newTokens[ i ] = new string[]{ keys[0], newValue };
 				tokens = newTokens;
 			}
 

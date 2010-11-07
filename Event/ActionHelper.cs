@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace CommonLib.Utils.Event
+namespace CommonLibs.Utils.Event
 {
+	using E=CommonLibs.Utils.ExceptionShield;
+
 	public class ActionHelper : ITriggerHoldable
 	{
 		public Action						Action;
@@ -40,21 +42,23 @@ namespace CommonLib.Utils.Event
 			if( NoTrigger )
 				return;
 
-			if( Delay.HasValue )
+			if(! Delay.HasValue )
 			{
-				var self = this;
+				// Trigger the Action right now
+				E.E( Action );
+			}
+			else
+			{
+				// Trigger the action in 'Delay' miliseconds
+				var self = this;  // NB: Copy to local variable for the lambda fct so that changing 'Action' before the timer triggers doesn't impact
 				Timer = new System.Windows.Forms.Timer{ Interval=Delay.Value };
 				Timer.Tick += (sender,e)=>
 					{
 						self.Timer.Dispose();
 						self.Timer = null;
-						self.Action();
+						E.E( self.Action );
 					};
 				Timer.Start();
-			}
-			else
-			{
-				Action();
 			}
 		}
 

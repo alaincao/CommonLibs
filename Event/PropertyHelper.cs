@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace CommonLib.Utils.Event
+namespace CommonLibs.Utils.Event
 {
+	using E=CommonLibs.Utils.ExceptionShield;
+
 	public class PropertyHelper<T> : IValueHelper<T>
 	{
 		public Action<T>			Setter;
@@ -27,31 +29,17 @@ namespace CommonLib.Utils.Event
 			bool availableChanged = false;
 			if( (oldValue == null) != (value == null) )
 			{
-				try
-				{
-					availableChanged = true;
+				availableChanged = true;
 					if( AvailableChanged != null )
-						AvailableChanged();
-				}
-				catch( System.Exception ex )
-				{
-					System.Diagnostics.Debug.Fail( "Event 'AvailableChanged' failed: " + ex.Message );
-				}
+						E.E( AvailableChanged );
 			}
 
 			if( ValueChanged != null )
 			{
-				try
-				{
-					if( availableChanged )
-						ValueChanged();
-					else if( (value != null) && (oldValue != null) && (!value.Equals(oldValue)) )
-						ValueChanged();
-				}
-				catch( System.Exception ex )
-				{
-					System.Diagnostics.Debug.Fail( "Event 'ValueChanged' failed: " + ex.Message );
-				}
+				if( availableChanged )
+					E.E( ValueChanged );
+				else if( (value != null) && (oldValue != null) && (!value.Equals(oldValue)) )
+					E.E( ValueChanged );
 			}
 		}
 
