@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Text;
 using System.Xml.Serialization;
@@ -29,7 +30,15 @@ namespace CommonLibs.ExceptionManager
 			Manager = manager;
 		}
 
-		public void Write(System.IO.TextWriter writer, string clientID)
+		public static string GetHtml(Manager manager, string rootNodeID)
+		{
+			var stringWriter = new StringWriter();
+			var htmlWriter = new HtmlWriter( manager );
+			htmlWriter.Write( stringWriter, rootNodeID );
+			return stringWriter.ToString();
+		}
+
+		public void Write(System.IO.TextWriter writer, string rootNodeID)
 		{
 			System.Diagnostics.Debug.Assert( Manager != null && Tree != null, "'Tree' is not supposed to be null" );
 			System.Diagnostics.Debug.Assert( Writer == null, "'Writer' property should have been reset at the end of the method" );
@@ -38,7 +47,7 @@ namespace CommonLibs.ExceptionManager
 			{
 				Writer = writer;
 
-				Writer.Write( "<div id='" + clientID + "' class='" + CssRoot + "'>" );
+				Writer.Write( "<div id='" + rootNodeID + "' class='" + CssRoot + "'>" );
 				foreach( var element in Tree.Children )
 					Explore( element, MaxDepth );
 				Writer.Write( "</div>" );

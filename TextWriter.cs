@@ -22,6 +22,12 @@ namespace CommonLibs.ExceptionManager
 			Manager = manager;
 		}
 
+		public static string GetText(Manager manager)
+		{
+			var textWriter = new CommonLibs.ExceptionManager.TextWriter( manager );
+			return textWriter.GetString();
+		}
+
 		public void Write(System.IO.TextWriter writer)
 		{
 			Write( writer, "\t" );
@@ -45,6 +51,7 @@ namespace CommonLibs.ExceptionManager
 			}
 		}
 
+		/// <remarks>Recursive</remarks>
 		private void Write(ObjectElement node, string indentation, int currentDepth)
 		{
 			switch( node.Type )
@@ -90,7 +97,7 @@ namespace CommonLibs.ExceptionManager
 			return writer.ToString();
 		}
 
-public static string GetElementValue(object value, Manager manager)
+		internal static string GetElementValue(object value, Manager manager)
 		{
 			System.Diagnostics.Debug.Assert( value != null, "The 'Value' property of a node is not supposed to be null" );
 			var valueTranslatable = value as TranslatableElement;
@@ -100,7 +107,7 @@ public static string GetElementValue(object value, Manager manager)
 				return value.ToString();
 		}
 
-public static string GetElementName(object nodeName, Manager manager)
+		internal static string GetElementName(object nodeName, Manager manager)
 		{
 			System.Diagnostics.Debug.Assert( nodeName != null, "The 'Name' property of a node of type 'object' or 'field' is not supposed to be null." );
 			System.Diagnostics.Debug.Assert( (nodeName.GetType() == typeof(string)) || (nodeName.GetType() == typeof(TranslatableElement)), "The 'Name' property is of an unknown type." );
