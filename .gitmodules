@@ -1,0 +1,6 @@
+[submodule "Utils"]
+	path = Utils
+	url = /Users/aa/Sites/GitRepos/CommonLibs/
+[submodule "ExceptionManager"]
+	path = ExceptionManager
+	url = /Users/aa/Sites/GitRepos/CommonLibs
