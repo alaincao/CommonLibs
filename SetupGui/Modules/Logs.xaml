@@ -1,0 +1,62 @@
+﻿<UserControl x:Class="CommonLibs.WPF.SetupGui.Modules.Logs"
+	xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+	xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+	xmlns:actions="clr-namespace:CommonLibs.WPF.SetupGui.Actions"
+	mc:Ignorable="d"
+	d:DesignHeight="300"
+	d:DesignWidth="500">
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="*"/>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+		<GridSplitter	Grid.Row="1"
+						Width="Auto"
+						Height="3"
+						HorizontalAlignment="Stretch"
+						VerticalAlignment="Stretch"
+						Margin="0 3 0 3" />
+
+		<ListView Name="lstLogs" Grid.Row="0"  SelectionMode="Single" BorderThickness="0">
+			<ListView.View>
+				<GridView>
+					<!--<GridView.ColumnHeaderContainerStyle>
+						<Style>
+							<Setter Property="FrameworkElement.Visibility" Value="Collapsed"/>
+						</Style>
+					</GridView.ColumnHeaderContainerStyle>-->
+					<GridView.Columns>
+						<GridViewColumn Width="30">
+							<GridViewColumn.CellTemplate>
+								<DataTemplate>
+									<Image Margin="-2" Width="23" Height="23" Source="{Binding StatusImage}"/>
+								</DataTemplate>
+							</GridViewColumn.CellTemplate>
+						</GridViewColumn>
+						<GridViewColumn Width="Auto" DisplayMemberBinding="{Binding Creator}" Header="Creator" />
+						<GridViewColumn Width="Auto" DisplayMemberBinding="{Binding Name}" Header="Name" />
+						<GridViewColumn Header="Progress" Width="Auto">
+							<GridViewColumn.CellTemplate>
+								<DataTemplate>
+									<ProgressBar Margin="-2" Width="100" Height="17" Value="{Binding Progress}"/>
+								</DataTemplate>
+							</GridViewColumn.CellTemplate>
+						</GridViewColumn>
+					</GridView.Columns>
+				</GridView>
+			</ListView.View>
+
+			<actions:LogEntrySample/>
+			<actions:LogEntrySample/>
+			<actions:LogEntrySample/>
+		</ListView>
+
+		<ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+			<actions:ActionEntryControl x:Name="usrActionEntry" />
+		</ScrollViewer>
+
+	</Grid>
+</UserControl>
