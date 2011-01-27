@@ -1,9 +1,9 @@
 [submodule "Utils"]
 	path = Utils
-	url = /Users/aa/Sites/GitRepos/CommonLibs/
+	url = /Users/aa/Sites/GitRepos/CommonLibs
 [submodule "ExceptionManager"]
 	path = ExceptionManager
 	url = /Users/aa/Sites/GitRepos/CommonLibs
 [submodule "WPF"]
 	path = WPF
-	url = D:/Works/Prog/Test01/CommonLibs/WPF
+	url = /Users/aa/Sites/GitRepos/CommonLibs
