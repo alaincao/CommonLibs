@@ -8,6 +8,24 @@ namespace CommonLibs.Utils.Event
 
 	public class ActionHelper : ITriggerHoldable
 	{
+		public class NoDelayHolder : IDisposable
+		{
+			private ActionHelper	ActionHelper;
+			private int				OriginalDelaySecons;
+
+			public NoDelayHolder(ActionHelper helper)
+			{
+				ActionHelper = helper;
+				OriginalDelaySecons = helper.DelaySeconds;
+				helper.DelaySeconds = 0;
+			}
+
+			public void Dispose()
+			{
+				ActionHelper.DelaySeconds = OriginalDelaySecons;
+			}
+		}
+
 		public Action						Action;
 		public int							DelaySeconds		{	get { return Delay.HasValue ? (int)Delay.Value/1000 : 0; }
 																	set { Delay = (value > 0) ? (value*1000) : (int?)null; } }
@@ -74,6 +92,11 @@ namespace CommonLibs.Utils.Event
 		public TriggerHolder<ActionHelper> NewHolder()
 		{
 			return new TriggerHolder<ActionHelper>( this );
+		}
+
+		public NoDelayHolder NewNoDelayHolder()
+		{
+			return new NoDelayHolder( this );
 		}
 	}
 }
