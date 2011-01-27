@@ -4,16 +4,21 @@ using System.Text;
 
 namespace CommonLibs.ExceptionManager
 {
+// TODO: Alain: #define FRAMEWORK_35 ???
 	/// <remarks>Defined in Framework 3.5 as System.Func</remarks>
 	public delegate TResult Func<T1, T2, TResult>(T1 arg1, T2 arg2);
 	/// <remarks>Defined in Framework 3.5 as System.Func</remarks>
 	public delegate TResult Func<T1, TResult>(T1 arg1);
+
+	public delegate Manager CreateManagerDelegate(Exception exception);
 
 	public class Manager
 	{
 		public ObjectElement					Tree			{ get; private set; }
 
 		public Func<string,object[],string>		Translate;
+
+		public static readonly CreateManagerDelegate		DefaultCreateManagerDelegate	= new CreateManagerDelegate( (exception)=>{ return new Manager(exception); } );
 
 		public Manager(Exception exception)
 		{
