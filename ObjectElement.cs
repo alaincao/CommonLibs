@@ -1,16 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Xml.Serialization;
+using System.Runtime.Serialization;
 
 namespace CommonLibs.ExceptionManager
 {
-	[Serializable]
 	public class TranslatableElement
 	{
 		private static readonly string		DefaultTextKey		= string.Empty;
 		private static readonly object[]	DefaultParameters	= new object[]{};
 
-		[XmlAttribute]
 		public string						TextKey				= DefaultTextKey;
 		public object[]						Parameters			{ get { return parameters; } set { parameters = value; System.Diagnostics.Debug.Assert( CheckParameters(value), "Bad assignment to property 'Parameters'" ); } }
 		private object[]					parameters			= DefaultParameters;
