@@ -37,7 +37,7 @@ namespace CommonLibs.WPF.SetupGui.Modules
 
 			InitializeComponent();
 
-			ActionsManager = new ActionsManager( "" );
+			ActionsManager = new ActionsManager( "" )  { Dispatcher = this.Dispatcher };
 			ActionsManager.ActionEntryFactory = (creator,name)=>
 				{
 					return new LogEntry(ActionsManager, creator, name);

@@ -11,11 +11,11 @@ namespace CommonLibs.WPF.SetupGui.Actions
 
 	public class ActionsManager
 	{
-		protected string							DefaultCreator		{ get; private set; }
-		protected bool								HasPendingActions	{ get { return CurrentPosition < ActionEntries.Count; } }
+		protected string							DefaultCreator				{ get; private set; }
+		protected bool								HasPendingActions			{ get { return CurrentPosition < ActionEntries.Count; } }
 
-		public ObservableCollection<ActionEntry>	ActionEntries		{ get; private set; }
-		private int									CurrentPosition		= 0;
+		public ObservableCollection<ActionEntry>	ActionEntries				{ get; private set; }
+		private int									CurrentPosition				= 0;
 
 		internal event Action<ActionEntry>			ActionStatusChanged;
 
@@ -23,6 +23,9 @@ namespace CommonLibs.WPF.SetupGui.Actions
 		/// Callback to use to create instances of ActionEntry
 		/// </summary>
 		public Func<string,string,ActionEntry>		ActionEntryFactory;
+
+		public Dispatcher							Dispatcher					{ get { return dispatcher; } set { if(dispatcher != null)  throw new ArgumentException("Dispatcher can only be assigned once"); dispatcher = value; } }
+		private Dispatcher							dispatcher					= null;
 
 		public ActionsManager(string defaultCreator)
 		{

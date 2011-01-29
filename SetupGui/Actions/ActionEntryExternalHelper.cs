@@ -18,6 +18,8 @@ namespace CommonLibs.WPF.SetupGui.Actions
 		private const string						MSG_METHODNAME				= "MethodName";
 		private const string						MSG_TYPE					= "MessageType";
 		private const string						MSG_TYPE_LOG				= "Log";
+		private const string						MSG_TYPE_ERROR				= "Error";
+		private const string						MSG_TYPE_WARNING			= "Warning";
 		private const string						MSG_TYPE_PROGRESS			= "Progress";
 		private const string						MSG_VALUE					= "Value";
 
@@ -50,7 +52,7 @@ namespace CommonLibs.WPF.SetupGui.Actions
 
 			Process = new System.Diagnostics.Process();
 			Process.StartInfo = procInfo;
-			Process.OutputDataReceived += Process_OutputDataReceived;
+			Process.OutputDataReceived += (sender,args)=>entry.ThreadDispatch( ()=>Process_OutputDataReceived(args.Data) );
 			var rc = Process.Start();
 			System.Diagnostics.Debug.Assert( rc == true, "Process.Start() returned false" );
 			StreamOut = Process.StandardInput;
@@ -104,6 +106,7 @@ namespace CommonLibs.WPF.SetupGui.Actions
 			}
 			catch( System.Exception exception )
 			{
+// TODO: Alain: Tester le E.E(). (Il semble que y aurait un prob STA Thread ?!?)
 				E.E( ()=>helper.Entry.AddException(exception) );
 			}
 			return true;
@@ -112,13 +115,12 @@ namespace CommonLibs.WPF.SetupGui.Actions
 		/// <summary>
 		/// Process lines sent by the child process through its stdout
 		/// </summary>
-		private void Process_OutputDataReceived(object sender, DataReceivedEventArgs e)
+		private void Process_OutputDataReceived(string line)
 		{
 			try
 			{
 				System.Diagnostics.Debug.Assert( Entry != null, "Entry property should have been set in the constructor" );
 
-				string line = e.Data;
 				if( line == null )
 				{
 					// Child process ended
@@ -131,6 +133,12 @@ namespace CommonLibs.WPF.SetupGui.Actions
 				{
 					case MSG_TYPE_LOG:
 						Entry.LogLine( (string)msg[MSG_VALUE] );
+						break;
+					case MSG_TYPE_ERROR:
+						Entry.AddError( (string)msg[MSG_VALUE] );
+						break;
+					case MSG_TYPE_WARNING:
+						Entry.AddWarning( (string)msg[MSG_VALUE] );
 						break;
 					case MSG_TYPE_PROGRESS:
 						Entry.UpdateProgress( int.Parse((string)msg[MSG_VALUE]) );
@@ -147,7 +155,7 @@ namespace CommonLibs.WPF.SetupGui.Actions
 				E.E( ()=>
 					{
 						exception = new CommonLibs.ExceptionManager.BaseException( "Error parsing message coming from the child process", exception )
-									.AddData( "Message line", e.Data );
+									.AddData( "Message line", line );
 						Entry.AddException(exception);
 					} );
 			}
@@ -158,6 +166,22 @@ namespace CommonLibs.WPF.SetupGui.Actions
 			var msg = new Dictionary<string,object>();
 			msg[ MSG_TYPE ] = MSG_TYPE_LOG;
 			msg[ MSG_VALUE ] = line;
+			SendMessage( msg );
+		}
+
+		internal void SendAddError(string message)
+		{
+			var msg = new Dictionary<string,object>();
+			msg[ MSG_TYPE ] = MSG_TYPE_ERROR;
+			msg[ MSG_VALUE ] = message;
+			SendMessage( msg );
+		}
+
+		internal void SendAddWarning(string message)
+		{
+			var msg = new Dictionary<string,object>();
+			msg[ MSG_TYPE ] = MSG_TYPE_WARNING;
+			msg[ MSG_TYPE_WARNING] = message;
 			SendMessage( msg );
 		}
 
