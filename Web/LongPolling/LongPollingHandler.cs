@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Threading;
 using System.Linq;
+using System.Text;
 using System.Web;
 using System.Web.SessionState;
 
@@ -10,82 +10,40 @@ using CommonLibs.Web.LongPolling.Utils;
 
 namespace CommonLibs.Web.LongPolling
 {
-	public class LongPollingHandler : IHttpAsyncHandler, /*IRequiresSessionState*/IReadOnlySessionState, IAsyncResult, IConnection
+	public abstract class LongPollingHandler : IHttpAsyncHandler, IReadOnlySessionState
 	{
-		public static ConnectionList	ConnectionList;
-		public static MessageHandler	MessageHandler;
+		[System.Diagnostics.Conditional("DEBUG")] private void LOG(string message)					{ CommonLibs.Utils.Debug.LOG( this, message ); }
+		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
+		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
+
+		protected abstract MessageHandler		MessageHandler							{ get; }
+		protected abstract ConnectionList		ConnectionList							{ get; }
 
 		#region For IHttpAsyncHandler
 
-		public bool						IsReusable								{ get { return false; } }
+		public bool								IsReusable								{ get { return true; } }
 
 		#endregion
 
-		#region For IAsyncResult
-
-		public object					AsyncState								{ get; private set; }
-		public WaitHandle				AsyncWaitHandle							{ get { throw new NotImplementedException( GetType().FullName + "::" + System.Reflection.MethodInfo.GetCurrentMethod().Name + "()" ); } }
-		public bool						CompletedSynchronously					{ get; private set; }
-		public bool						IsCompleted								{ get; private set; }
-
-		private AsyncCallback			Callback;
-
-		#endregion
-
-		#region For IConnection
-
-		public string					SessionID								{ get; set; }
-		public string					ConnectionID							{ get; set; }
-
-		#endregion
-
-		private const string			RequestTypeKey							= "type";
-		private const string			RequestTypeInit							= "init";
-		private const string			RequestTypePoll							= "poll";
-		private const string			RequestTypeMessages						= "messages";
-
-		private const string			RequestConnectionIDKey					= "connection";
-		private const string			RequestMessagesListKey					= "contents";
-		private const string			RequestMessageContentKey				= "content";
-		//private const string			RequestRequestIDKey						= "request";
-
-		private const string			ResponseTypeKey							= RequestTypeKey;
-		private const string			ResponseTypeInit						= RequestTypeInit;
-		private const string			ResponseTypeMessages					= RequestTypeMessages;
-		private const string			ResponseTypeException					= "exception";
-		private const string			ResponseTypeReset						= "reset";
-		private const string			ResponseTypeLogout						= "logout";
-
-		private const string			ResponseMessagesListKey					= RequestMessagesListKey;
-		private const string			ResponseExceptionContentKey				= RequestMessageContentKey;
-		private const string			ResponseConnectionIDKey					= RequestConnectionIDKey;
-		//private const string			ResponseRequestIDKey					= RequestRequestIDKey;
-
-		private HttpContext				HttpContext;
-
-		public LongPollingHandler()
+		void IHttpHandler.ProcessRequest(HttpContext context)
 		{
-			CompletedSynchronously = false;
+			FAIL( "ProcessRequest() - Should not be used by IHttpAsyncHandler" );  // Should only be used by IHttpHandler
 		}
 
-		public void ProcessRequest(HttpContext context)
+		IAsyncResult IHttpAsyncHandler.BeginProcessRequest(HttpContext context, AsyncCallback callback, object asyncState)
 		{
-			System.Diagnostics.Debug.Fail( "Should not be used by IHttpAsyncHandler: " + GetType().FullName + "::" + System.Reflection.MethodInfo.GetCurrentMethod().Name + "()" );
-		}
+			LOG( "BeginProcessRequest() - Start" );
+			ASSERT( MessageHandler != null, "Property 'MessageHandler' is not defined" );
+			ASSERT( ConnectionList != null, "Property 'ConnectionList' is not defined" );
 
-		IAsyncResult IHttpAsyncHandler.BeginProcessRequest(HttpContext context, AsyncCallback callback, object extraData)
-		{
-			System.Diagnostics.Trace.WriteLine( GetType().FullName + "::" + System.Reflection.MethodInfo.GetCurrentMethod().Name + "() - started" );
-
+			Message responseMessage;
+			string sessionID;
+			string connectionID = null;
+			bool connectionHeld = false;  // Set to true if this ConnectionID has been held to receive the arriving messages
 			try
 			{
-				HttpContext = context;
-				Callback = callback;
-				AsyncState = extraData;
-				IsCompleted = false;
-
 				// Get SessionID
-				SessionID = HttpContext.Current.Session.SessionID;
+				sessionID = LongPolling.ConnectionList.GetSessionID( context );
 
 				// Read request
 				var binData = context.Request.BinaryRead( context.Request.TotalBytes );
@@ -93,64 +51,98 @@ namespace CommonLibs.Web.LongPolling
 				var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
 				var requestMessage = (Dictionary<string,object>)serializer.DeserializeObject( strData );
 
-				string messageType = (string)requestMessage[ RequestTypeKey ];
+				// Check message type
+				string messageType = (string)requestMessage[ Message.TypeKey ];
+				LOG( "BeginProcessRequest() - Received message of type '" + messageType + "'" );
 				switch( messageType )
 				{
-					case RequestTypeInit: {
-						// Allocate a new ConnectionID and send it to the peer
-						var connectionID = ConnectionList.AllocateNewConnectionID( SessionID );
-						var responseMessage = new Dictionary<string,object>();
-						responseMessage[ ResponseTypeKey ] = ResponseTypeInit;
-						responseMessage[ ResponseConnectionIDKey ] = connectionID;
-						SendResponse( responseMessage );
-						CompletedSynchronously = true;
+					case Message.TypeInit: {
+
+						bool initAccepted = ConnectionList.CheckInitAccepted( requestMessage, sessionID );
+						if( initAccepted )
+						{
+							// Allocate a new ConnectionID and send it to the peer
+							connectionID = ConnectionList.AllocateNewConnectionID( sessionID );
+							responseMessage = Message.CreateInitMessage( connectionID );
+							LOG( "BeginProcessRequest() - Response message set to 'init'" );
+						}
+						else
+						{
+							// Init refused => Send 'logout'
+							responseMessage = Message.CreateLogoutMessage();
+							LOG( "BeginProcessRequest() - Response message set to 'logout'" );
+						}
 						break; }
 
-					case RequestTypePoll: {
+					case Message.TypePoll: {
+
 						// Get ConnectionID
-						ConnectionID = requestMessage.TryGetString( RequestConnectionIDKey );
-						if( string.IsNullOrEmpty(ConnectionID) )
-							throw new ApplicationException( "Missing ConnectionID in message" );
+						connectionID = requestMessage.TryGetString( Message.KeySenderID );
+						if( string.IsNullOrEmpty(connectionID) )
+							throw new ApplicationException( "Missing sender ID in message" );
+
+						if(! ConnectionList.CheckConnectionIsValid(sessionID, connectionID) )
+						{
+							LOG( "BeginProcessRequest() *** The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );
+							responseMessage = Message.CreateLogoutMessage();
+							break;
+						}
 
 						// Register this connection for this ConnectionID
-						if(! ConnectionList.RegisterConnection(this) )
-						{
-							System.Diagnostics.Debug.Fail( "The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );  // Remove this assert if happens too often (and there is a good reason?)
-							SendLogout();
-							CompletedSynchronously = true;
-							break;
-						}
+						responseMessage = null;
+
+						// Don't set checkPendingMessages to true: Don't pull the messages from the MessageHandler right now but let it get registered to the ConnectionList first.
+						// So under heavy load, if there are always pending messages available each time the polling request reaches the server,
+						// the whole connection doesn't get timed-out because it never had the opportunity to register...
 						break; }
 
-					case RequestTypeMessages: {
+					case Message.TypeMessages: {
+
 						// Get ConnectionID
-						ConnectionID = requestMessage.TryGetString( RequestConnectionIDKey );
-						if( string.IsNullOrEmpty(ConnectionID) )
+						connectionID = requestMessage.TryGetString( Message.KeySenderID );
+						if( string.IsNullOrEmpty(connectionID) )
 							throw new ApplicationException( "Missing ConnectionID in message" );
 
-						if(! ConnectionList.CheckConnectionIsValid(SessionID, ConnectionID) )
+						if(! ConnectionList.CheckConnectionIsValid(sessionID, connectionID) )
 						{
-							System.Diagnostics.Debug.Fail( "The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );  // Remove this assert if happens too often (and there is a good reason?)
-							SendLogout();
-							CompletedSynchronously = true;
+							LOG( "BeginProcessRequest() *** The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );
+							responseMessage = Message.CreateLogoutMessage();
 							break;
 						}
 
-						var messages = new List<IDictionary<string,object>>();  // RequestID => MessageContent
-						foreach( var messageItem in ((IEnumerable)requestMessage[ RequestMessagesListKey ]).Cast<IDictionary<string,object>>() )
-						{
-							var content = (IDictionary<string,object>)messageItem[ RequestMessageContentKey ];
-							messages.Add( content );
-						}
-						MessageHandler.ReceiveMessages( ConnectionID, messages );
+						// Hold any messages that must be sent to this connection until all those messages are received
+						// so that reply messages are not sent one by one
+						LOG( "BeginProcessRequest() - Holding connection '" + connectionID + "'" );
+						connectionHeld = true;
+						MessageHandler.HoldConnectionMessages( connectionID );
 
-						// Send an empty message list as response
-						// TODO: Alain: Check if there are no pending messages in the MessageHandler to reurn instead of an empty message list
-						var responseMessage = new Dictionary<string,object>();
-						responseMessage[ ResponseTypeKey ] = ResponseTypeMessages;
-						responseMessage[ ResponseTypeMessages ] = new object[]{};
-						SendResponse( responseMessage );
-						CompletedSynchronously = true;
+						foreach( var messageItem in ((IEnumerable)requestMessage[ Message.KeyMessageMessagesList ]).Cast<IDictionary<string,object>>() )
+						{
+							Message message = null;
+							try
+							{
+								var receivedMessage = Message.CreateReceivedMessage( connectionID, messageItem );
+								LOG( "BeginProcessRequest() - Receiving message '" + receivedMessage + "'" );
+								MessageHandler.ReceiveMessage( receivedMessage );
+							}
+							catch( System.Exception ex )
+							{
+								LOG( "BeginProcessRequest() *** Exception (" + ex.GetType().FullName + ") while receiving message" );
+
+								// Send exception through MessageHandler so that we can continue to parse the other messages
+								if( message == null )
+									// We can't get the original message => This is a fatal exception message
+									MessageHandler.SendMessageToConnection( connectionID, Message.CreateFatalExceptionMessage(ex) );
+								else
+									// We have the original message => Use it as source of the returned exception message
+									MessageHandler.SendMessageToConnection( connectionID, Message.CreateExceptionMessage(message, ex) );
+							}
+						}
+
+// TODO: Alain: LongPollingHandler.ProcessRequest(): Messages received OK, check that there are pending messages for this connection. If yes, send them through this connection
+// ONLY if this is NOT the polling request: Sending through the polling requests is managed by the MessageHandler itself. Other requests are not registered to the ConnectionList
+// SET responseMessage <<== empty message list si rien dispo pour que "ConnectionList.RegisterConnection()" soit pas appelé + bas
+						responseMessage = Message.CreateEmptyResponseMessage();
 						break; }
 
 					default:
@@ -159,90 +151,61 @@ namespace CommonLibs.Web.LongPolling
 			}
 			catch( System.Exception ex )
 			{
-				System.Diagnostics.Trace.WriteLine( GetType().FullName + "::" + System.Reflection.MethodInfo.GetCurrentMethod().Name + "() - *** EXCEPTION '" + ex.GetType().FullName + "': " + ex.Message );
+				LOG( System.Reflection.MethodInfo.GetCurrentMethod().Name + "() *** EXCEPTION WHILE PARSING MESSAGE '" + ex.GetType().FullName + "': " + ex.Message );
 
-				// Send exception to peer
-				var responseMessage = new Dictionary<string,object>();
-				responseMessage[ ResponseTypeKey ] = ResponseTypeException;
-				responseMessage[ ResponseExceptionContentKey ] = ex.Message;
-				SendResponse( responseMessage );
-				CompletedSynchronously = true;
+				// Send exception to peer (right now ; not through the MessageHandler)
+				// NB: The actual message is a message list with only 1 item of type 'exception'
+				var exceptionMessage = Message.CreateResponseMessage( new Message[]{ Message.CreateFatalExceptionMessage(ex) } );
+				var exceptionResult = new LongPollingConnection( exceptionMessage, context, callback, asyncState );
+				return exceptionResult;
+			}
+			finally
+			{
+				if( connectionHeld && (connectionID != null) )
+				{
+					// Remove the hold on this connection
+					LOG( "BeginProcessRequest() - Unholding messages for connection '" + connectionID + "'" );
+					try { MessageHandler.UnholdConnectionMessages( connectionID ); }
+					catch( System.Exception ex )  { FAIL( "BeginProcessRequest() *** Exception (" + ex.GetType().FullName + ") while calling MessageHandler.UnholdConnectionMessages('" + connectionID + "')" ); }
+				}
 			}
 
-			System.Diagnostics.Trace.WriteLine( GetType().FullName + "::" + System.Reflection.MethodInfo.GetCurrentMethod().Name + "() - ended" );
-			return this;
+			LOG( "BeginProcessRequest() - Creating the LongPollingConnection" );
+			var connection = new LongPollingConnection( sessionID, connectionID, context, callback, asyncState );
+
+			if( responseMessage == null )
+			{
+				LOG( "BeginProcessRequest() - Nothing to send right now - registering LongPollingConnection to ConnectionList" );
+				if(! ConnectionList.RegisterConnection(connection) )
+				{
+					FAIL( "The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );  // This check is already done above (only LOG()ged). This should really not happen often => FAIL()
+					responseMessage = Message.CreateLogoutMessage();
+				}
+			}
+
+			if( responseMessage != null )
+			{
+				LOG( "BeginProcessRequest() - Sending response right now" );
+				connection.SendResponseMessageSynchroneously( responseMessage );
+			}
+
+			LOG( "BeginProcessRequest() - Exit" );
+			return connection;
 		}
 
-		public void EndProcessRequest(IAsyncResult r)
+		void IHttpAsyncHandler.EndProcessRequest(IAsyncResult result)
 		{
-			// NB: All the response logic is in SendResponse()
-			System.Diagnostics.Trace.WriteLine( GetType().FullName + "::" + System.Reflection.MethodInfo.GetCurrentMethod().Name + "()" );
-		}
+			LOG( "EndProcessRequest() - Start" );
 
-		/// <remarks>Once registered to the ConnectionList, can only be called from the ConnectionList to avoid multiple threads trying to send message through the same connection</remarks>
-		public void SendMessage(object messageContent)
-		{
-			System.Diagnostics.Debug.Assert( messageContent != null, "Missing parameter 'messageContent'" );
+			var connection = (LongPollingConnection)result;
+			ASSERT( connection.ResponseMessage != null, "EndProcessRequest() called but there are no ResponseMessage available" );  //  This method should be called by LongPollingConnection.SendResponseMessage() only
 
-			var message = new Dictionary<string,object>();
-			message[ ResponseTypeKey ] = ResponseTypeMessages;
-			message[ ResponseMessagesListKey ] = new object[]{ messageContent };
-			SendResponse( message );
-		}
-
-		/// <remarks>Once registered to the ConnectionList, can only be called from the ConnectionList to avoid multiple threads trying to send message through the same connection</remarks>
-		public void SendMessage(string requestID, object messageContent)
-		{
-			System.Diagnostics.Debug.Assert( messageContent != null, "Missing parameter 'messageContent'" );
-			System.Diagnostics.Debug.Assert( !string.IsNullOrEmpty(requestID), "Missing parameter 'requestID'" );
-
-			var message = new Dictionary<string,object>();
-			message[ ResponseTypeKey ] = ResponseTypeMessages;
-			message[ ResponseRequestIDKey ] = requestID;
-			message[ ResponseMessagesListKey ] = new object[]{ messageContent };
-			SendResponse( message );
-		}
-
-		/// <remarks>Once registered to the ConnectionList, can only be called from the ConnectionList to avoid multiple threads trying to send message through the same connection</remarks>
-		public void SendException(string requestID, Exception exception)
-		{
-			System.Diagnostics.Debug.Assert( exception != null, "Missing parameter 'exception'" );
-			System.Diagnostics.Debug.Assert( !string.IsNullOrEmpty(requestID), "Missing parameter 'requestID'" );
-
-			var message = new Dictionary<string,object>();
-			message[ ResponseTypeKey ] = ResponseTypeException;
-			message[ ResponseRequestIDKey ] = requestID;
-			message[ ResponseExceptionContentKey ] = exception.Message;
-			SendResponse( message );
-		}
-
-		/// <remarks>Once registered to the ConnectionList, can only be called from the ConnectionList to avoid multiple threads trying to send message through the same connection</remarks>
-		public void SendReset()
-		{
-			var message = new Dictionary<string,object>();
-			message[ ResponseTypeKey ] = ResponseTypeReset;
-			SendResponse( message );
-		}
-
-		/// <remarks>Once registered to the ConnectionList, can only be called from the ConnectionList to avoid multiple threads trying to send message through the same connection</remarks>
-		public void SendLogout()
-		{
-			var message = new Dictionary<string,object>();
-			message[ ResponseTypeKey ] = ResponseTypeLogout;
-			SendResponse( message );
-		}
-
-		private void SendResponse(Dictionary<string,object> responseMessage)
-		{
 			// Write response to stream
 			var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
-			var str = serializer.Serialize( responseMessage );
-			HttpContext.Response.Write( str );
+			var str = serializer.Serialize( connection.ResponseMessage );
+			connection.HttpContext.Response.Write( str );
 
-			// Terminate HTTP response
-			IsCompleted = true;
-			if( Callback != null )
-				Callback( this );
+			LOG( "EndProcessRequest() - End" );
 		}
 	}
 }
