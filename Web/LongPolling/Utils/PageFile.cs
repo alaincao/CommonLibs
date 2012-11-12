@@ -5,8 +5,6 @@ using System.Linq;
 using System.Text;
 using System.Web;
 
-//using Sigma.Utils;
-
 namespace CommonLibs.Web.LongPolling.Utils
 {
 	public abstract class PageFile : CommonLibs.Web.LongPolling.SyncedHttpHandler.ISyncedRequestHandler, IDisposable
