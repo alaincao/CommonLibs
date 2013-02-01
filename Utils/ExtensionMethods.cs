@@ -7,6 +7,13 @@ namespace CommonLibs.Utils
 {
 	public static class ExtensionMethods
 	{
+		public static string EscapeQuotes(this string str)
+		{
+			if( str == null )
+				return null;
+			return str.Replace( "'", "\\'" );
+		}
+
 		public static int IndexOf(this byte[] self, byte[] searchPattern, int startIndex=0)
 		{
 			CommonLibs.Utils.Debug.ASSERT( self != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'self'" );
