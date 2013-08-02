@@ -31,6 +31,8 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Linq;
 
+using CommonLibs.Utils.Event;
+
 namespace CommonLibs.Utils.Tasks
 {
 	public class TasksQueue : IDisposable
@@ -58,6 +60,9 @@ namespace CommonLibs.Utils.Tasks
 
 		private volatile Timer							CurrentTimer				= null;
 		private bool									Disposed					= false;
+
+		public event Action<TaskEntry>					OnEntryRemoved				{ add { onEntryRemoved.Add(value); } remove { onEntryRemoved.Remove(value); } }
+		private CallbackList<TaskEntry>					onEntryRemoved				= new CallbackList<TaskEntry>();
 
 		public TasksQueue()
 		{
@@ -96,6 +101,28 @@ namespace CommonLibs.Utils.Tasks
 				FAIL( "TasksQueue.Dispose() threw a '" + ex.GetType().FullName + "' exception: " + ex.Message );
 			}
 			LOG( "Dispose() - Exit" );
+		}
+
+		/// <summary>
+		/// Create a task for immediate execution only if 'MaximumConcurrentTasks' is not reached
+		/// </summary>
+		/// <returns>
+		/// The created task or null if the there are too many tasks currently running
+		/// </returns>
+		public TaskEntry CreateTaskIfNotBusy(Action<TaskEntry> callback)
+		{
+			lock( LockObject )
+			{
+				if( RunningTasks.Count >= MaximumConcurrentTasks )
+				{
+					return null;
+				}
+				else
+				{
+					var time = DateTime.MinValue.ToUniversalTime();
+					return CreateTask( time, callback );
+				}
+			}
 		}
 
 		/// <summary>
@@ -317,6 +344,9 @@ namespace CommonLibs.Utils.Tasks
 				if( checkRunningTasks )
 					// The 'RunningTasks' has changed
 					CheckRunningTasks();
+
+				LOG( "Remove('" + entry + ") - Invoking " + onEntryRemoved.Count + " callbacks for 'OnEntryRemoved' event" );
+				onEntryRemoved.Invoke( entry );
 			}
 
 			LOG( "Remove('" + entry + ") - Exit" );

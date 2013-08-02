@@ -145,6 +145,20 @@ namespace CommonLibs.Web.LongPolling
 			return HandlerCallbacks.Select( v=>v.Key ).ToArray();
 		}
 
+		#if DEBUG
+		/// <remarks>This method is not thread-safe and may crash => Use only for debugging purposes</remarks>
+		public void AddOrReplaceMessageHandler(string messageType, Action<Message> callback)
+		{
+			HandlerCallbacks[ messageType ] = new CallbackItem{ CallbackDirect = callback };
+		}
+
+		/// <remarks>This method is not thread-safe and may crash => Use only for debugging purposes</remarks>
+		public void AddOrReplaceMessageHandler(string messageType, Action<TaskEntry,Message> callback)
+		{
+			HandlerCallbacks[ messageType ] = new CallbackItem{ CallbackThreaded = callback };
+		}
+		#endif
+
 		public void AddMessageHandler(string messageType, Action<Message> callback)
 		{
 			ASSERT( !string.IsNullOrEmpty(messageType), "Missing parameter 'messageType'" );

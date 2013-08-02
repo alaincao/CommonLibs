@@ -60,10 +60,22 @@ namespace CommonLibs.Web.LongPolling
 			if( jsObjectName != null )
 				// Create JS message handler
 				script += "<script type='text/javascript'>\n"
-						+ "window."+jsObjectName+" = new LongPollingClient('"+longPollingHandlerUrl.EscapeQuotes()+"','"+longPollingSyncedHandlerUrl.EscapeQuotes()+"','"+logoutUrl.EscapeQuotes()+"');\n"
-						+ (startDirectly ? (jsObjectName+".start();\n") : "" )  // Start if requested
+						+ CreateJSClientInitializationScript( jsObjectName, longPollingHandlerUrl, longPollingSyncedHandlerUrl, logoutUrl, startDirectly )
 						+ "</script>\n";
 
+			return script;
+		}
+
+		/// <remarks>JQuery JavaScript files must be included before this script declaration (i.e. in the page's 'head' tag)</remarks>
+		public static string CreateJSClientInitializationScript(string jsObjectName, string longPollingHandlerUrl, string longPollingSyncedHandlerUrl, string logoutUrl, bool startDirectly=false)
+		{
+			longPollingHandlerUrl = longPollingHandlerUrl.EscapeQuotes();
+			longPollingSyncedHandlerUrl = longPollingSyncedHandlerUrl.EscapeQuotes();
+			logoutUrl = logoutUrl.EscapeQuotes();
+			var script = "window."+jsObjectName+" = new LongPollingClient('"+longPollingHandlerUrl+"','"+longPollingSyncedHandlerUrl+"','"+logoutUrl+"');\n";
+			if( startDirectly )
+				// Start if requested
+				script += jsObjectName+".start();\n";
 			return script;
 		}
 	}

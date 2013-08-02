@@ -96,7 +96,7 @@ namespace CommonLibs.Web.LongPolling
 			}
 
 			var message = new Message( sourceMessage );
-			message[ Message.TypeKey ] = handlerTypeString;  // Replace the message handler by the reply-to handler
+			message[ Message.KeyMessageHandler ] = handlerTypeString;  // Replace the message handler by the reply-to handler
 			message.Remove( KeySenderID );  // Remove the original SenderID from the response
 			message.Remove( KeyMessageResponseHandler );  // Remove the reply-to handler
 			message.Remove( KeyMessageChainedMessages );  // Remove the chained messages if any
@@ -139,7 +139,15 @@ namespace CommonLibs.Web.LongPolling
 			CommonLibs.Utils.Debug.ASSERT( template != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'template' parameter" );
 
 			var message = new Message( template );
-			message[ Message.TypeKey ] = peerHandlerType;
+			message[ Message.KeyMessageHandler ] = peerHandlerType;
+			return message;
+		}
+
+		public static Message CreateMessage(IDictionary<string,object> template)
+		{
+			CommonLibs.Utils.Debug.ASSERT( template != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'template' parameter" );
+
+			var message = new Message( template );
 			return message;
 		}
 
@@ -147,7 +155,7 @@ namespace CommonLibs.Web.LongPolling
 		{
 			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(peerHandlerType), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'peerHandlerType' parameter" );
 
-			var message = new Message {	{ Message.TypeKey, peerHandlerType } };
+			var message = new Message {	{ Message.KeyMessageHandler, peerHandlerType } };
 			return message;
 		}
 
@@ -222,7 +230,7 @@ namespace CommonLibs.Web.LongPolling
 
 				// The reply-to is available => Send a response message with an exception key
 				var message = new Message( sourceMessage );
-				message[ Message.TypeKey ] = (string)handlerType;  // Replace the original message handler by the reply-to handler
+				message[ Message.KeyMessageHandler ] = (string)handlerType;  // Replace the original message handler by the reply-to handler
 				message[ KeyMessageException ] = new Dictionary<string,string> {  // Create the KeyMessageException with the exception content
 																	{ KeyMessageExceptionMessage, exception.Message },
 																	{ KeyMessageExceptionClass, exception.GetType().FullName },

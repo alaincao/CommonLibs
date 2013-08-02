@@ -164,7 +164,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 
 			// Create message list with all the pending messages
 			var messageContents = [];
-			for( i in this.__pendingMessages )
+			for( var i=0; i<this.__pendingMessages.length; ++i )
 			{
 				var messageItem = this.__pendingMessages[ i ];
 
@@ -212,19 +212,19 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 				self.__send( pendingQuery, message );
 			};
 
-		if( $.browser.safari || $.browser.opera )
-		{
-			// Opera & Safari thinks the page is still loading until all the initial requests are terminated (which never happens in case of a long-polling...)
-			// => Those browsers shows the 'turning wait icon' idefinately or even worse never show the page! (Opera)
+//		if( $.browser.safari || $.browser.opera )
+//		{
+//			// Opera & Safari thinks the page is still loading until all the initial requests are terminated (which never happens in case of a long-polling...)
+//			// => Those browsers shows the 'turning wait icon' indefinately (Safari) or even worse never show the page! (Opera)
 
-			// Add a delay before sending the initial long-polling query
-			self.$this.delay( 300 ).queue( function(){ sendRequestFunction(); } );
-		}
-		else
-		{
+//			// Add a delay before sending the initial long-polling query
+//			self.$this.delay( 300 ).queue( function(){ sendRequestFunction(); } );
+//		}
+//		else
+//		{
 			// Other browsers => sending the initial long-polling query immediately
 			sendRequestFunction();
-		}
+//		}
 
 		$(window).unload( function()
 			{
@@ -309,7 +309,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 						else if( responseType == 'messages' )
 						{
 							var messagesList = response[ 'messages' ];
-							for( var i in messagesList )
+							for( var i=0; i<messagesList.length; ++i )
 							{
 								try
 								{
