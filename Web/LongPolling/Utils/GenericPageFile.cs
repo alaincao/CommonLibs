@@ -63,10 +63,12 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 		/// <summary>
 		/// Parameter 1: The HttpRequest<br/>
-		/// Returns: The file path to download
+		/// Parameter 2: Set to the name of the file to download<br/>
+		/// Parameter 3: Set to the path of the file to download (required only if outputStream is set to null)<br/>
+		/// Parameter 4: Set to the stream to download (required only if filePath is set to null)
 		/// </summary>
 		public DownloadRequestedDeleagate DownloadRequested = null;
-		public delegate void DownloadRequestedDeleagate(HttpRequest request, out string fileName, out string filePath);
+		public delegate void DownloadRequestedDeleagate(HttpRequest request, out string fileName, out string filePath, out System.IO.Stream outputStream);
 
 		public GenericPageFile(MessageHandler messageHandler, string connectionID) : base(messageHandler, connectionID)
 		{
@@ -159,9 +161,12 @@ namespace CommonLibs.Web.LongPolling.Utils
 			if( DownloadRequested == null )
 				throw new NotImplementedException( "The 'DownloadRequested' callback has not been set" );
 			string filePath;
-			DownloadRequested( request, out fileName, out filePath );
-			var stream = System.IO.File.Open( filePath, System.IO.FileMode.Open );
-			return stream;
+			System.IO.Stream outputStream;
+			DownloadRequested( request, out fileName, out filePath, out outputStream );
+			if( outputStream != null )
+				return outputStream;
+			else
+				return System.IO.File.Open( filePath, System.IO.FileMode.Open );
 		}
 
 		public static string CreateDownloadUrl(string syncedHttpHandlerUrl, Type receiverType, string connectionID, IDictionary<string,string> parameters=null)
