@@ -234,13 +234,19 @@ namespace CommonLibs.Web.LongPolling
 			LOG( "ConnectionList_ConnectionAllocated(" + connectionID + ") - exit" );
 		}
 
-		public void SendNotification(string textMessage)
+		public void SendNotification(string textMessage, Dictionary<string,object> additionalInfo=null)
 		{
 			try
 			{
 				var message = CreateProgressMessage( textMessage );
-				if( message != null )
-					Send( message );
+				if( message == null )
+					return;
+
+				if( additionalInfo != null )
+					foreach( var pair in additionalInfo )
+						message[pair.Key] = pair.Value;
+
+				Send( message );
 			}
 			catch( System.Exception ex )
 			{

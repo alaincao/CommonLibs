@@ -238,7 +238,7 @@ namespace CommonLibs.Web.LongPolling
 		/// Method used by the message handlers to check if the just successfully processed message has inner messages to process
 		/// </summary>
 		/// <param name="originalMessage">The message that the handler successfully processed</param>
-		public void CheckChainedMessages(Message originalMessage)
+		public void CheckChainedMessages(Message originalMessage, Dictionary<string,object> additionalInfo=null)
 		{
 			ASSERT( originalMessage != null, "Missing parameter 'originalMessage'" );
 
@@ -251,6 +251,13 @@ namespace CommonLibs.Web.LongPolling
 			foreach( var item in list )
 			{
 				var chainedMessage = Message.CreateReceivedMessage( originalMessage.SenderConnectionID, (IDictionary<string,object>)item );
+
+				if( additionalInfo != null )
+				{
+					foreach( var pair in additionalInfo )
+						chainedMessage[ pair.Key ] = pair.Value;
+				}
+
 				ReceiveMessage( chainedMessage );
 			}
 		}
