@@ -64,7 +64,7 @@ namespace CommonLibs.Web.LongPolling
 			ASSERT( MessageHandler != null, "Property 'MessageHandler' is not defined" );
 			ASSERT( ConnectionList != null, "Property 'ConnectionList' is not defined" );
 
-			Message responseMessage;
+			RootMessage responseMessage;
 			string sessionID;
 			string connectionID = null;
 			bool connectionHeld = false;  // Set to true if this ConnectionID has been held to receive the arriving messages
@@ -80,39 +80,39 @@ namespace CommonLibs.Web.LongPolling
 				var requestMessage = (Dictionary<string,object>)serializer.DeserializeObject( strData );
 
 				// Check message type
-				string messageType = (string)requestMessage[ Message.TypeKey ];
+				string messageType = (string)requestMessage[ RootMessage.TypeKey ];
 				LOG( "BeginProcessRequest() - Received message of type '" + messageType + "'" );
 				switch( messageType )
 				{
-					case Message.TypeInit: {
+					case RootMessage.TypeInit: {
 
 						bool initAccepted = ConnectionList.CheckInitAccepted( requestMessage, sessionID );
 						if( initAccepted )
 						{
 							// Allocate a new ConnectionID and send it to the peer
 							connectionID = ConnectionList.AllocateNewConnectionID( sessionID );
-							responseMessage = Message.CreateInitMessage( connectionID );
+							responseMessage = RootMessage.CreateInitRootMessage( connectionID );
 							LOG( "BeginProcessRequest() - Response message set to 'init'" );
 						}
 						else
 						{
 							// Init refused => Send 'logout'
-							responseMessage = Message.CreateLogoutMessage();
+							responseMessage = RootMessage.CreateLogoutRootMessage();
 							LOG( "BeginProcessRequest() - Response message set to 'logout'" );
 						}
 						break; }
 
-					case Message.TypePoll: {
+					case RootMessage.TypePoll: {
 
 						// Get ConnectionID
-						connectionID = requestMessage.TryGetString( Message.KeySenderID );
+						connectionID = requestMessage.TryGetString( RootMessage.KeySenderID );
 						if( string.IsNullOrEmpty(connectionID) )
 							throw new ApplicationException( "Missing sender ID in message" );
 
 						if(! ConnectionList.CheckConnectionIsValid(sessionID, connectionID) )
 						{
 							LOG( "BeginProcessRequest() *** The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );
-							responseMessage = Message.CreateLogoutMessage();
+							responseMessage = RootMessage.CreateLogoutRootMessage();
 							break;
 						}
 
@@ -124,17 +124,17 @@ namespace CommonLibs.Web.LongPolling
 						// the whole connection doesn't get timed-out because it never had the opportunity to register...
 						break; }
 
-					case Message.TypeMessages: {
+					case RootMessage.TypeMessages: {
 
 						// Get ConnectionID
-						connectionID = requestMessage.TryGetString( Message.KeySenderID );
+						connectionID = requestMessage.TryGetString( RootMessage.KeySenderID );
 						if( string.IsNullOrEmpty(connectionID) )
 							throw new ApplicationException( "Missing ConnectionID in message" );
 
 						if(! ConnectionList.CheckConnectionIsValid(sessionID, connectionID) )
 						{
 							LOG( "BeginProcessRequest() *** The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );
-							responseMessage = Message.CreateLogoutMessage();
+							responseMessage = RootMessage.CreateLogoutRootMessage();
 							break;
 						}
 
@@ -144,7 +144,7 @@ namespace CommonLibs.Web.LongPolling
 						connectionHeld = true;
 						MessageHandler.HoldConnectionMessages( connectionID );
 
-						foreach( var messageItem in ((IEnumerable)requestMessage[ Message.KeyMessageMessagesList ]).Cast<IDictionary<string,object>>() )
+						foreach( var messageItem in ((IEnumerable)requestMessage[ RootMessage.KeyMessageMessagesList ]).Cast<IDictionary<string,object>>() )
 						{
 							Message message = null;
 							try
@@ -159,18 +159,16 @@ namespace CommonLibs.Web.LongPolling
 
 								// Send exception through MessageHandler so that we can continue to parse the other messages
 								if( message == null )
-									// We can't get the original message => This is a fatal exception message
-									MessageHandler.SendMessageToConnection( connectionID, Message.CreateFatalExceptionMessage(ex) );
+									MessageHandler.SendMessageToConnection( connectionID, Message.CreateExceptionMessage(exception:ex) );
 								else
-									// We have the original message => Use it as source of the returned exception message
-									MessageHandler.SendMessageToConnection( connectionID, Message.CreateExceptionMessage(message, ex) );
+									MessageHandler.SendMessageToConnection( connectionID, Message.CreateExceptionMessage(exception:ex, sourceMessage:message) );
 							}
 						}
 
-// TODO: Alain: LongPollingHandler.ProcessRequest(): Messages received OK, check that there are pending messages for this connection. If yes, send them through this connection
-// ONLY if this is NOT the polling request: Sending through the polling requests is managed by the MessageHandler itself. Other requests are not registered to the ConnectionList
-// SET responseMessage <<== empty message list si rien dispo pour que "ConnectionList.RegisterConnection()" soit pas appelé + bas
-						responseMessage = Message.CreateEmptyResponseMessage();
+						// NB: The first idea was to send pending messages (if there were any available) through the "messages" request instead of waiting for the "polling" request to send them.
+						// But since both requests could be sending concurrently, it would be hard for the client-side to receive all messages IN THE RIGHT ORDER
+						// => Always reply with an empty response message list ; Don't send the pending messages
+						responseMessage = RootMessage.CreateEmptyResponseMessage();
 						break; }
 
 					default:
@@ -183,7 +181,7 @@ namespace CommonLibs.Web.LongPolling
 
 				// Send exception to peer (right now ; not through the MessageHandler)
 				// NB: The actual message is a message list with only 1 item of type 'exception'
-				var exceptionMessage = Message.CreateResponseMessage( new Message[]{ Message.CreateFatalExceptionMessage(ex) } );
+				var exceptionMessage = RootMessage.CreateRootMessage( new Message[]{ Message.CreateExceptionMessage(exception:ex) } );
 				var exceptionResult = new LongPollingConnection( exceptionMessage, context, callback, asyncState );
 				return exceptionResult;
 			}
@@ -207,7 +205,7 @@ namespace CommonLibs.Web.LongPolling
 				if(! ConnectionList.RegisterConnection(connection) )
 				{
 					FAIL( "The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );  // This check is already done above (only LOG()ged). This should really not happen often => FAIL()
-					responseMessage = Message.CreateLogoutMessage();
+					responseMessage = RootMessage.CreateLogoutRootMessage();
 				}
 			}
 

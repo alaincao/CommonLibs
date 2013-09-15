@@ -78,7 +78,7 @@ namespace CommonLibs.Web.LongPolling
 				Disposed = true;
 				if( Connection != null )
 				{
-					try { Connection.SendResponseMessage(Message.CreateResetMessage()); }
+					try { Connection.SendResponseMessage(RootMessage.CreateResetRootMessage()); }
 					catch( System.Exception ex ) { ConnectionList.FatalExceptionHandler( "Call to Connection.SendReset() threw an exception", ex ); }
 				}
 				if( DisconnectionTimeout != null )
@@ -408,7 +408,7 @@ namespace CommonLibs.Web.LongPolling
 			var customObjects = new List<object>();
 
 			var closedConnections = new List<string>();
-			var messagesToSend = new List<KeyValuePair<IConnection,Message>>();
+			var messagesToSend = new List<KeyValuePair<IConnection,RootMessage>>();
 			lock( LockObject )
 			{
 				LOG( "SessionEnded(" + sessionID + ") - Lock aquired" );
@@ -444,7 +444,7 @@ namespace CommonLibs.Web.LongPolling
 						if( connectionEntry.Connection != null )
 						{
 							// Send a logout message to the connection and forget it
-							messagesToSend.Add( new KeyValuePair<IConnection,Message>(connectionEntry.Connection, Message.CreateLogoutMessage()) );
+							messagesToSend.Add( new KeyValuePair<IConnection,RootMessage>(connectionEntry.Connection, RootMessage.CreateLogoutRootMessage()) );
 							connectionEntry.Connection = null;
 						}
 						customObjects.AddRange( connectionEntry.CustomObjects.Select(v=>v.Value) );
@@ -570,7 +570,7 @@ namespace CommonLibs.Web.LongPolling
 			ASSERT( !string.IsNullOrEmpty(sessionID), "The connection has no 'SessionID'" );
 			LOG( "RegisterConnection(" + connectionID + ") - Start" );
 
-			var messagesToSend = new List<KeyValuePair<IConnection,Message>>();
+			var messagesToSend = new List<KeyValuePair<IConnection,RootMessage>>();
 			lock( LockObject )
 			{
 				LOG( "RegisterConnection(" + connectionID + ") - Lock aquired" );
@@ -611,7 +611,7 @@ namespace CommonLibs.Web.LongPolling
 				{
 					FAIL( "We are supposed to be registering a long-polling HTTP connection to a currently disconnected IConnection. No Connection is supposed to be present here" );
 					// Reset the (mistakenly) open connection
-					messagesToSend.Add( new KeyValuePair<IConnection,Message>(connectionEntry.Connection, Message.CreateResetMessage()) );
+					messagesToSend.Add( new KeyValuePair<IConnection,RootMessage>(connectionEntry.Connection, RootMessage.CreateResetRootMessage()) );
 					connectionEntry.Connection = null;
 				}
 
@@ -826,7 +826,7 @@ namespace CommonLibs.Web.LongPolling
 		public bool SendMessagesToConnectionIfAvailable(string connectionID, IEnumerable<Message> messages)
 		{
 			LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Start" );
-			var messagesToSend = new List<KeyValuePair<IConnection,Message>>();
+			var messagesToSend = new List<KeyValuePair<IConnection,RootMessage>>();
 			lock( LockObject )
 			{
 				ConnectionEntry connectionEntry;
@@ -845,7 +845,7 @@ namespace CommonLibs.Web.LongPolling
 				try
 				{
 					ASSERT( connectionEntry.Connection != null, "If connectionEntry.Available, then connectionEntry.Connection is supposed to be set" );
-					messagesToSend.Add( new KeyValuePair<IConnection,Message>(connectionEntry.Connection, Message.CreateResponseMessage(messages)) );
+					messagesToSend.Add( new KeyValuePair<IConnection,RootMessage>(connectionEntry.Connection, RootMessage.CreateRootMessage(messages)) );
 
 					if( connectionEntry.StaleTimeout == null )
 					{
@@ -961,7 +961,7 @@ namespace CommonLibs.Web.LongPolling
 		private void ConnectionEntry_StaleTimeout(CommonLibs.Utils.Tasks.TaskEntry taskEntry, ConnectionEntry connectionEntry)
 		{
 			LOG( "ConnectionEntry_StaleTimeout() - Start" );
-			var messagesToSend = new List<KeyValuePair<IConnection,Message>>();
+			var messagesToSend = new List<KeyValuePair<IConnection,RootMessage>>();
 			lock( LockObject )
 			{
 				ASSERT( connectionEntry != null, "Missing parameter 'connectionEntry'" );
@@ -990,7 +990,7 @@ namespace CommonLibs.Web.LongPolling
 				ASSERT( connectionEntry.Connection != null, "We are supposed to declare a long-polling HTTP connection stale. An active Connection is supposed to be present here" );
 
 				// Ask the peer to reconnect
-				messagesToSend.Add( new KeyValuePair<IConnection,Message>(connectionEntry.Connection, Message.CreateResetMessage()) );
+				messagesToSend.Add( new KeyValuePair<IConnection,RootMessage>(connectionEntry.Connection, RootMessage.CreateResetRootMessage()) );
 				connectionEntry.Connection = null;
 
 				// Start the DisconnectionTimeout

@@ -377,9 +377,10 @@ namespace CommonLibs.Web.LongPolling
 					List<Message> newMessagesList;
 					if( PendingMessages.TryGetValue(receiverConnectionID, out newMessagesList) )
 					{
-						// New messages were queued for this connection while trying to send the ones we were already managing => Add the old ones to the new list
+						// New messages were queued for this connection while trying to send the ones we were already managing => Add them to the list and requeue it
 						ASSERT( newMessagesList != null && newMessagesList.Count > 0, "New messages were queued but there is nothing in the list..." );
-						newMessagesList.AddRange( messagesList );
+						messagesList.AddRange( newMessagesList );
+						PendingMessages[ receiverConnectionID ] = messagesList;
 						recheckAfter = false;  // If messages were added for this connection in the mean-time by another thread, then let this other thread manage the sending...
 					}
 					else
@@ -437,12 +438,12 @@ namespace CommonLibs.Web.LongPolling
 			catch( System.Reflection.TargetInvocationException ex )
 			{
 				LOG( "HandleMessageThread(" + taskEntry + "," + message + ") - TargetInvocationException" );
-				SendMessageToConnection( message.SenderConnectionID, Message.CreateExceptionMessage(message, ex.InnerException) );
+				SendMessageToConnection( message.SenderConnectionID, Message.CreateExceptionMessage(exception:ex.InnerException, sourceMessage:message) );
 			}
 			catch( System.Exception ex )
 			{
 				LOG( "HandleMessageThread(" + taskEntry + "," + message + ") - Exception" );
-				SendMessageToConnection( message.SenderConnectionID, Message.CreateExceptionMessage(message, ex) );
+				SendMessageToConnection( message.SenderConnectionID, Message.CreateExceptionMessage(exception:ex, sourceMessage:message) );
 			}
 			finally
 			{

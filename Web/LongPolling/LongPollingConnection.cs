@@ -61,7 +61,7 @@ namespace CommonLibs.Web.LongPolling
 
 		#endregion
 
-		internal Message				ResponseMessage							= null;
+		internal RootMessage			ResponseMessage							= null;
 
 		internal LongPollingConnection(string sessionID, string connectionID, HttpContext httpContext, AsyncCallback asyncCallback, object asyncState)
 		{
@@ -81,7 +81,7 @@ namespace CommonLibs.Web.LongPolling
 		}
 
 		/// <remarks>Used for fatal exception messages caugth by the LongPollingHandler</remarks>
-		internal LongPollingConnection(Message message, HttpContext httpContext, AsyncCallback asyncCallback, object asyncState)
+		internal LongPollingConnection(RootMessage message, HttpContext httpContext, AsyncCallback asyncCallback, object asyncState)
 		{
 			ASSERT( message != null, "Missing parameter 'message'" );
 			ASSERT( httpContext != null, "Missing parameter 'httpContext'" );
@@ -95,7 +95,7 @@ namespace CommonLibs.Web.LongPolling
 		}
 
 		/// <remarks>Can only be called from LongPollingHandler</remarks>
-		internal void SendResponseMessageSynchroneously(Message responseMessage)
+		internal void SendResponseMessageSynchroneously(RootMessage responseMessage)
 		{
 			CompletedSynchronously = true;
 			SendResponseMessage( responseMessage );
@@ -109,7 +109,7 @@ namespace CommonLibs.Web.LongPolling
 		/// This thread will try to create a new thread from the "AsyncCallback(this)".<br/>
 		/// The problem is that "AsyncCallback(this)" will then hang, waiting for a worker slot thread to liberate...
 		/// </remarks>
-		public void SendResponseMessage(Message responseMessage)
+		public void SendResponseMessage(RootMessage responseMessage)
 		{
 			ASSERT( responseMessage != null, "Missing parameter 'responseMessage'" );
 

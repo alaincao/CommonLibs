@@ -35,28 +35,18 @@ namespace CommonLibs.Web.LongPolling
 {
 	public class Message : Dictionary<string,object>
 	{
-		// Message types:
-		internal const string					TypeKey							= "type";
-		internal const string					TypeInit						= "init";
-		internal const string					TypePoll						= "poll";
-		internal const string					TypeMessages					= "messages";
+		// Reserved message types:
 		private const string					TypeFatalException				= "exception";
-		private const string					TypeReset						= "reset";
-		private const string					TypeLogout						= "logout";
 
 		// Reserved message keys for TypeMessages:
-		internal const string					KeySenderID						= "sender";
+		internal const string					KeySenderID						= RootMessage.KeySenderID;  // NB: use the same
 		public const string						KeyMessageHandler				= "type";
 		public const string						KeyMessageResponseHandler		= "reply_to_type";
 		internal const string					KeyMessageChainedMessages		= "chained_messages";
-		internal const string					KeyMessageMessagesList			= "messages";
 		public const string						KeyMessageException				= "exception";
-		private const string					KeyMessageExceptionMessage		= "message";
-		private const string					KeyMessageExceptionClass		= "class";
-		private const string					KeyMessageExceptionStackTrace	= "stack";
-
-		// Message keys for TypeFatalException
-		private const string					KeyFatalExceptionContent		= "content";
+		private const string					KeyMessageExceptionMessage			= "message";
+		private const string					KeyMessageExceptionClass			= "class";
+		private const string					KeyMessageExceptionStackTrace		= "stack";
 
 		public string							SenderConnectionID				{ get { object id; return this.TryGetValue(KeySenderID, out id) ? ""+id : null; } }
 		internal string							HandlerType						{ get { object handler; return this.TryGetValue(KeyMessageHandler, out handler) ? ""+handler : null; } }
@@ -71,7 +61,7 @@ namespace CommonLibs.Web.LongPolling
 
 		public static Message CreateResponseMessage(Message sourceMessage)
 		{
-			return CreateResponseMessage( sourceMessage, /*responseHandlerType=*/null );
+			return CreateResponseMessage( sourceMessage, responseHandlerType:null );
 		}
 
 		/// <summary>
@@ -124,13 +114,9 @@ namespace CommonLibs.Web.LongPolling
 
 			#endif
 
+			// Copy the SenderConnectionID
 			message[ KeySenderID ] = senderConnectionID;
 			return message;
-		}
-
-		public static Message CreateEmptyResponseMessage()
-		{
-			return CreateResponseMessage( new Message[]{} );
 		}
 
 		public static Message CreateMessage(string peerHandlerType, IDictionary<string,object> template)
@@ -159,87 +145,54 @@ namespace CommonLibs.Web.LongPolling
 			return message;
 		}
 
-		internal static Message CreateResponseMessage(IEnumerable<Message> messageContents)
-		{
-			var message = new Message {
-								{ Message.TypeKey, Message.TypeMessages },
-								{ Message.TypeMessages, messageContents } };
-			return message;
-		}
-
-		internal static Message CreateInitMessage(string connectionID)
-		{
-			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(connectionID), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'connectionID'" );
-
-			var message = new Message {
-								{ Message.TypeKey, Message.TypeInit },
-								{ Message.KeySenderID, connectionID } };
-			return message;
-		}
-
-		/// <remarks>Once the connection has been registered to the ConnectionList, this message can only be sent by this ConnectionList (inside its lock()) to avoid multiple threads trying to send message through the same connection</remarks>
-		internal static Message CreateResetMessage()
-		{
-			var message = new Message {
-								{ Message.TypeKey, Message.TypeReset } };
-			return message;
-		}
-
-		/// <remarks>Once the connection has been registered to the ConnectionList, this message can only be sent by this ConnectionList (inside its lock()) to avoid multiple threads trying to send message through the same connection</remarks>
-		internal static Message CreateLogoutMessage()
-		{
-			var message = new Message {
-								{ Message.TypeKey, Message.TypeLogout } };
-			return message;
-		}
-
-		internal static Message CreateFatalExceptionMessage(Exception exception)
+		public static Message CreateExceptionMessage(Exception exception, Message sourceMessage=null)
 		{
 			CommonLibs.Utils.Debug.ASSERT( exception != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'exception'" );
 
-// TODO: Alain: static CreateExceptionMessage()
-// Utiliser l'exceptionmanager pour serializer l'exception et l'envoyer comme message.
-			var message = new Message {
-								{ TypeKey, TypeFatalException },
-								{ KeyMessageExceptionMessage, exception.Message },
-								{ KeyMessageExceptionClass, exception.GetType().FullName },
-								{ KeyMessageExceptionStackTrace, exception.StackTrace } };
-			return message;
-		}
-
-		/// <summary>
-		/// Same as CreateResponseMessage() but adds a 'KeyMessageException' filled with the exception content
-		/// </summary>
-		public static Message CreateExceptionMessage(Message sourceMessage, Exception exception)
-		{
-			CommonLibs.Utils.Debug.ASSERT( sourceMessage != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'sourceMessage'" );
-			CommonLibs.Utils.Debug.ASSERT( exception != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'exception'" );
-
-// TODO: Alain: static CreateExceptionMessage()
-// Utiliser le exceptionmanager pour serializer l'exception et l'envoyer comme message.
-			// Get the reply-to message handler
-			object handlerType; string handlerTypeString;
-			if( (!sourceMessage.TryGetValue(KeyMessageResponseHandler, out handlerType)) || ((handlerTypeString = handlerType as string) == null) )
-			{
-				// No reply-to available => noone could receive a response message with an exception key => Send a fatal exception instead
-				return CreateFatalExceptionMessage( exception );
-			}
-			else
-			{
-// TODO: Alain: If there is no reply-to, send a fatal exception to sender
-
-				// The reply-to is available => Send a response message with an exception key
-				var message = new Message( sourceMessage );
-				message[ Message.KeyMessageHandler ] = (string)handlerType;  // Replace the original message handler by the reply-to handler
-				message[ KeyMessageException ] = new Dictionary<string,string> {  // Create the KeyMessageException with the exception content
+			// TODO: Alain: static CreateExceptionMessage(): Use ExceptionManager to create exception content and send it in the message.
+			var exceptionTemplate = new Dictionary<string,object> {  // Create the KeyMessageException with the exception content
 																	{ KeyMessageExceptionMessage, exception.Message },
 																	{ KeyMessageExceptionClass, exception.GetType().FullName },
 																	{ KeyMessageExceptionStackTrace, exception.StackTrace }
 																};
-				message.Remove( KeySenderID );  // Remove the original SenderID from the response
-				message.Remove( KeyMessageResponseHandler );  // Remove the reply-to handler
-				return message;
+
+			// Determine if there is a 'reply_to_type' handler to send to
+			bool hasReplyTo;
+			if( sourceMessage == null )
+			{
+				hasReplyTo = false;
 			}
+			else
+			{
+				object handlerType;
+				if( sourceMessage.TryGetValue(Message.KeyMessageResponseHandler, out handlerType) )
+				{
+					if(! string.IsNullOrEmpty(handlerType as string) )
+						hasReplyTo = true;
+					else
+						hasReplyTo = false;
+				}
+				else
+				{
+					hasReplyTo = false;
+				}
+			}
+
+			Message message;
+			if( hasReplyTo )
+			{
+				// This is a regular response message to which we add a special 'exception' key (NB: to avoid polluting the root of the message)
+				message = CreateResponseMessage( sourceMessage );
+				CommonLibs.Utils.Debug.ASSERT(! message.ContainsKey(KeyMessageException), System.Reflection.MethodInfo.GetCurrentMethod(), "The message key 'exception' will be overwritten on the response message" );
+				message[ KeyMessageException ] = exceptionTemplate;
+			}
+			else
+			{
+				// There is no handler known to receive this exception => Create a new message of type 'exception' with the exception's content directly in the message's root
+				message = CreateMessage( peerHandlerType:TypeFatalException, template:exceptionTemplate );
+			}
+
+			return message;
 		}
 	}
 }
