@@ -41,11 +41,6 @@ namespace CommonLibs.Web.LongPolling.Utils
 		[System.Diagnostics.Conditional("DEBUG")] protected void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] protected void FAIL(string message)				{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		public interface IFilePageReceiver
-		{
-			void FileUploadCreated(PageFile fileUpload);
-		}
-
 		public class OperationAbortedException : ApplicationException
 		{
 			public OperationAbortedException(string message) : base(message)  {}

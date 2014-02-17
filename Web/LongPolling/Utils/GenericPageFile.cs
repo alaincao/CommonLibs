@@ -37,13 +37,13 @@ namespace CommonLibs.Web.LongPolling.Utils
 	{
 		public const string							OutMsgParmFileID				= PageFile.RqstFileID;
 
-		public const string							HandlerType						= "de97320d-76b6-4bf1-667d-505a8f520c43";
+		public const string							HandlerType						= "GenericPageFile-de97320d";
 		public string								CustomObjectName				{ get { return customObjectName.ToString(); } }
 		public Guid									customObjectName				= Guid.NewGuid();
 
 		public const string							RqstUploadReceiverAssembly		= "UploadReceiverAssembly";
-		public const string							RqstUploadReceivertype			= "UploadReceiverType";
-		private const string						UploadReceiverMethodName		= "GetInstance";
+		public const string							RqstUploadReceiverType			= "UploadReceiverType";
+		public const string							RqstUploadReceiverMethod		= "UploadReceiverMethod";
 
 		public override int							UploadLengthForStreamParser		{ get { return 40*1024; } }
 
@@ -51,7 +51,10 @@ namespace CommonLibs.Web.LongPolling.Utils
 		/// <param name="request">The HttpRequest</param>
 		/// <param name="uploadFileName">The client's file name</param>
 		/// <param name="filePath">Set to the path the file must be saved</param>
-		public delegate void OnUploadStartedDelegate(HttpRequest request, string uploadFileName, out string filePath);
+		public delegate void OnUploadStartedDelegate(HttpRequest request, string uploadFileName);
+
+		/// <summary>Set this method to change the default way to create upload file path</summary>
+		public Func<string>							OnUploadGetFilePath				= DefaultGetFilePath;
 
 		public OnUploadTerminatedDelegate			OnUploadTerminated				= null;
 		/// <param name="request">The HttpRequest</param>
@@ -78,53 +81,67 @@ namespace CommonLibs.Web.LongPolling.Utils
 			OnSendingNewFileMessage += GenericPageFile_OnSendingNewFileMessage;
 		}
 
-		public static Dictionary<string,string> CreateUploaderQueryParameters(Type receiverType)
+		public static Dictionary<string,string> CreateUploaderQueryParameters(Type receiverType, string methodName="OnUploadPageFileCreated")
 		{
-			CommonLibs.Utils.Debug.ASSERT( receiverType.GetInterface(typeof(IFilePageReceiver).Name) != null, System.Reflection.MethodInfo.GetCurrentMethod(), "The provided 'receiverType' does not implement interface '" + typeof(IFilePageReceiver).Name + "'" );
-			CommonLibs.Utils.Debug.ASSERT( receiverType.GetMethod(UploadReceiverMethodName, System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.Static, null, new Type[] {	typeof(LongPolling.ConnectionList), typeof(HttpRequest), typeof(string) }, null) != null, System.Reflection.MethodInfo.GetCurrentMethod(), "The provided 'receiverType' does not have a static method '" + UploadReceiverMethodName + "'" );
+			CommonLibs.Utils.Debug.ASSERT( receiverType != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'receiverType'" );
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(methodName), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'methodName'" );
 
-			var assemblyName = receiverType.Assembly.ManifestModule.Name;
+			#if DEBUG
+				var methodParameters = new Type[] {	typeof(LongPolling.ConnectionList),
+													typeof(string),
+													typeof(GenericPageFile),
+													typeof(HttpRequest) };
+				var method = receiverType.GetMethod( methodName, System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.Static, null, methodParameters, null );
+				if( method == null )
+					CommonLibs.Utils.Debug.ASSERT( false, System.Reflection.MethodInfo.GetCurrentMethod(), "The provided 'receiverType' does not have or does not correctly implement method '" + methodName + "'" );
+			#endif
+
 			var parms = new Dictionary<string,string>();
+			var assemblyName = receiverType.Assembly.ManifestModule.Name;
 			parms[ SyncedHttpHandler.RequestParmType ] = HandlerType;
 			parms[ RqstUploadReceiverAssembly ] = assemblyName;
-			parms[ RqstUploadReceivertype ] = receiverType.FullName;
+			parms[ RqstUploadReceiverType ] = receiverType.FullName;
+			parms[ RqstUploadReceiverMethod ] = methodName;
 			return parms;
 		}
 
-		public static SyncedHttpHandler.ISyncedRequestHandler GenericSyncedHandler(LongPolling.ConnectionList connectionList, HttpRequest request, string connectionID, Func<PageFile> createCallback)
+		public static SyncedHttpHandler.ISyncedRequestHandler GenericSyncedHandler(LongPolling.ConnectionList connectionList, HttpRequest request, string connectionID, Func<GenericPageFile> createCallback)
 		{
 			var customObjectName = request.QueryString[ PageFile.RqstFileID ];
+			GenericPageFile pageFileInstance;
 			if( !string.IsNullOrEmpty(customObjectName) )
 			{
-				// Try get instance using the CustomObjectName
-				var instance = (GenericPageFile)connectionList.GetConnectionCustomObject( connectionID, customObjectName );
-				if( instance != null )
-					return instance;
+				// Try get the PageFile instance using the CustomObjectName
+				pageFileInstance = (GenericPageFile)connectionList.GetConnectionCustomObject( connectionID, customObjectName );
+				if( pageFileInstance != null )
+					return pageFileInstance;
 			}
 			// None found => Create a new instance
+			pageFileInstance = createCallback();
 
+			// And invoke the callback on the receiver class to give it the new instance
 			var assemblyName = request.QueryString[ RqstUploadReceiverAssembly ];
 			if( string.IsNullOrEmpty(assemblyName) )
 				throw new ArgumentException( "GenericFileUpload failed: query parameter '" + RqstUploadReceiverAssembly + "' is missing" );
-			var typeName = request.QueryString[ RqstUploadReceivertype ];
+			var typeName = request.QueryString[ RqstUploadReceiverType ];
 			if( string.IsNullOrEmpty(typeName) )
-				throw new ArgumentException( "GenericFileUpload failed: query parameter '" + RqstUploadReceivertype + "' is missing" );
+				throw new ArgumentException( "GenericFileUpload failed: query parameter '" + RqstUploadReceiverType + "' is missing" );
+			var methodName = request.QueryString[ RqstUploadReceiverMethod ];
+			if( string.IsNullOrEmpty(methodName) )
+				throw new ArgumentException( "GenericFileUpload failed: query parameter '" + RqstUploadReceiverMethod + "' is missing" );
 
 			var assembly = AppDomain.CurrentDomain.GetAssemblies().Where( v=>v.ManifestModule.Name == assemblyName ).Single();
 			var type = assembly.GetType( typeName );
 			var methodParameters = new Type[] {	typeof(LongPolling.ConnectionList),
-												typeof(HttpRequest),
-												typeof(string) };
-			var method = type.GetMethod( UploadReceiverMethodName, System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.Static, null, methodParameters, null );
+												typeof(string),
+												typeof(GenericPageFile),
+												typeof(HttpRequest) };
+			var method = type.GetMethod( methodName, System.Reflection.BindingFlags.Public|System.Reflection.BindingFlags.Static, null, methodParameters, null );
 			if( method == null )
-				throw new ArgumentException( "GenericFileUpload failed: Could not find method '" + UploadReceiverMethodName + "()' in type '" + assemblyName+"."+typeName + "'" );
-			var uploadReceiver = (IFilePageReceiver)method.Invoke( type, new object[]{connectionList, request, connectionID} );
-			if( uploadReceiver == null )
-				throw new ArgumentException( "GenericFileUpload failed: Method '" + UploadReceiverMethodName + "()' did not returned the 'IFilePageReceiver' instance" );
+				throw new ArgumentException( "GenericFileUpload failed: Could not find method '" + methodName + "()' in type '" + assemblyName+"."+typeName + "'" );
+			method.Invoke( type, new object[]{connectionList, connectionID, pageFileInstance, request} );
 
-			var uploader = createCallback();
-			uploadReceiver.FileUploadCreated( uploader );
-			return uploader;
+			return pageFileInstance;
 		}
 
 		private void GenericPageFile_OnSendingNewFileMessage(Message message)
@@ -135,16 +152,13 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 		protected override System.IO.Stream GetUploadStream(HttpRequest request, string uploadFileName, out string fileName, out Action<bool, long> onUploadTerminated)
 		{
+			CommonLibs.Utils.Debug.ASSERT( OnUploadGetFilePath != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Property 'OnUploadGetFilePath' is supposed to be set here" );
+
 			fileName = uploadFileName;
-			string filePath;
-			if( OnUploadStarted == null )
-			{
-				filePath = System.IO.Path.GetTempPath() + Guid.NewGuid().ToString();
-			}
-			else
-			{
-				OnUploadStarted( request, uploadFileName, out filePath );
-			}
+			if( OnUploadStarted != null )
+				OnUploadStarted( request, uploadFileName );
+
+			string filePath = OnUploadGetFilePath();
 
 			var fName = fileName;
 			onUploadTerminated = (success,size)=>
@@ -154,6 +168,11 @@ namespace CommonLibs.Web.LongPolling.Utils
 				};
 
 			return System.IO.File.Create( filePath );
+		}
+
+		private static string DefaultGetFilePath()
+		{
+			return System.IO.Path.GetTempPath() + Guid.NewGuid().ToString();
 		}
 
 		protected override System.IO.Stream GetDownloadStream(HttpRequest request, out string fileName)
