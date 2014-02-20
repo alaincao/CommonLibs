@@ -42,6 +42,26 @@ namespace CommonLibs.Utils
 			return str.Replace( "'", "\\'" );
 		}
 
+		public static string Left(this string str, int n)
+		{
+			if( str == null )
+				return null;
+			if( n >= str.Length )
+				return str;
+			var rv = str.Substring( 0, n );
+			return rv;
+		}
+
+		public static string Right(this string str, int n)
+		{
+			if( str == null )
+				return null;
+			if( n >= str.Length )
+				return str;
+			string rv = str.Substring( (str.Length-n), n );
+			return rv;
+		}
+
 		public static int IndexOf(this byte[] self, byte[] searchPattern, int startIndex=0)
 		{
 			CommonLibs.Utils.Debug.ASSERT( self != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'self'" );

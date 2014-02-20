@@ -40,11 +40,11 @@ function LongPollingFileUploader($uploadControl, messageHandler, options)
 	self.fileInputName = 'LongPollingFileUploader_Input_' + self.id;
 	self.serverSideMsgHandlerType = 'FileUpload';  // String that identifies the server-side message handler for custom messages
 	self.serverSideRequestHandlerType = 'FileUpload';  // String that identifies the synced handler (c.f. CommonLibs.Web.LongPolling.SyncedHttpHandler)
-	self.serverSideCustomObjectName = self.serverSideRequestHandlerType;  // String that identifies the uploader in server-side
-	if( options && options['serverSideRequestHandlerType'] )
-		// Use the same as 'serverSideRequestHandlerType' except when in is overriden
-		self.serverSideCustomObjectName = options['serverSideRequestHandlerType'];
 	self.clientSideMsgHandlerType = 'FileUpload_' + self.id;
+	self.serverSideCustomObjectName = self.clientSideMsgHandlerType;  // String that identifies the uploader in server-side
+	if( options && options['serverSideRequestHandlerType'] )
+		// Use the same as 'clientSideMsgHandlerType' except when 'serverSideRequestHandlerType' is overriden
+		self.serverSideCustomObjectName = options['serverSideRequestHandlerType'];
 	self.urlParameters = {};  // Values sent as query parameters to the posting URL (NB: Values set below)
 
 	// Bind to this event to receive internal errors.

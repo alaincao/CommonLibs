@@ -134,7 +134,7 @@ namespace CommonLibs.Web
 				ReceivePostedData( preloadedBuffer, preloadedBuffer.Length );
 
 			long bytesRead = preloadedBuffer != null ? preloadedBuffer.Length : 0;
-			if(! worker.IsEntireEntityBodyIsPreloaded() )
+			//if(! worker.IsEntireEntityBodyIsPreloaded() )   <= Bugs when browser does not provide request length (when upload size >2Gb)
 			{
 				while( true )
 				{

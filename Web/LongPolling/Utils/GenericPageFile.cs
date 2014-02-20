@@ -38,8 +38,8 @@ namespace CommonLibs.Web.LongPolling.Utils
 		public const string							OutMsgParmFileID				= PageFile.RqstFileID;
 
 		public const string							HandlerType						= "GenericPageFile-de97320d";
-		public string								CustomObjectName				{ get { return customObjectName.ToString(); } }
-		public Guid									customObjectName				= Guid.NewGuid();
+		public string								CustomObjectName				{ get { return (customObjectName != null) ? customObjectName : (customObjectName = Guid.NewGuid().ToString()); } set { customObjectName = value; } }
+		private string								customObjectName				= null;
 
 		public const string							RqstUploadReceiverAssembly		= "UploadReceiverAssembly";
 		public const string							RqstUploadReceiverType			= "UploadReceiverType";
@@ -54,15 +54,15 @@ namespace CommonLibs.Web.LongPolling.Utils
 		public delegate void OnUploadStartedDelegate(HttpRequest request, string uploadFileName);
 
 		/// <summary>Set this method to change the default way to create upload file path</summary>
-		public Func<string>							OnUploadGetFilePath				= DefaultGetFilePath;
+		public Func<HttpRequest,string,string>		OnUploadGetFilePath				= DefaultGetFilePath;
 
 		public OnUploadTerminatedDelegate			OnUploadTerminated				= null;
 		/// <param name="request">The HttpRequest</param>
 		/// <param name="uploadFileName">The file name as it has been uploaded</param>
 		/// <param name="filePath">The file path</param>
-		/// <param name="succes">True if the upload was successfully completed. False if not</param>
+		/// <param name="success">True if the upload was successfully completed. False if not</param>
 		/// <param name="size">The uploaded file size</param>
-		public delegate void OnUploadTerminatedDelegate(HttpRequest request, string uploadFileName, string filePath, bool succes, long size);
+		public delegate void OnUploadTerminatedDelegate(HttpRequest request, string uploadFileName, string filePath, bool success, long size);
 
 		/// <summary>
 		/// Parameter 1: The HttpRequest<br/>
@@ -75,13 +75,10 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 		public GenericPageFile(MessageHandler messageHandler, string connectionID) : base(messageHandler, connectionID)
 		{
-			var obj = MessageHandler.ConnectionList.GetConnectionCustomObject( connectionID, CustomObjectName, ()=>this );
-			ASSERT( obj == this, "The registration of this 'GenericPageFile' did not return this instance (another one already exists)" );
-
 			OnSendingNewFileMessage += GenericPageFile_OnSendingNewFileMessage;
 		}
 
-		public static Dictionary<string,string> CreateUploaderQueryParameters(Type receiverType, string methodName="OnUploadPageFileCreated")
+		public static Dictionary<string,string> GetQueryParameters(Type receiverType, string methodName="OnPageFileCreated", string connectionID=null)
 		{
 			CommonLibs.Utils.Debug.ASSERT( receiverType != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'receiverType'" );
 			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(methodName), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'methodName'" );
@@ -99,6 +96,8 @@ namespace CommonLibs.Web.LongPolling.Utils
 			var parms = new Dictionary<string,string>();
 			var assemblyName = receiverType.Assembly.ManifestModule.Name;
 			parms[ SyncedHttpHandler.RequestParmType ] = HandlerType;
+			if( connectionID != null )
+				parms[ SyncedHttpHandler.RequestParmConnectionID ] = connectionID;
 			parms[ RqstUploadReceiverAssembly ] = assemblyName;
 			parms[ RqstUploadReceiverType ] = receiverType.FullName;
 			parms[ RqstUploadReceiverMethod ] = methodName;
@@ -108,16 +107,27 @@ namespace CommonLibs.Web.LongPolling.Utils
 		public static SyncedHttpHandler.ISyncedRequestHandler GenericSyncedHandler(LongPolling.ConnectionList connectionList, HttpRequest request, string connectionID, Func<GenericPageFile> createCallback)
 		{
 			var customObjectName = request.QueryString[ PageFile.RqstFileID ];
+			if( customObjectName == "" )
+				customObjectName = null;
 			GenericPageFile pageFileInstance;
-			if( !string.IsNullOrEmpty(customObjectName) )
+			if( customObjectName != null )
 			{
 				// Try get the PageFile instance using the CustomObjectName
 				pageFileInstance = (GenericPageFile)connectionList.GetConnectionCustomObject( connectionID, customObjectName );
 				if( pageFileInstance != null )
+					// Found: Return it
 					return pageFileInstance;
 			}
-			// None found => Create a new instance
+			// Not found => Create a new instance
 			pageFileInstance = createCallback();
+
+			if( customObjectName != null )
+			{
+				// Register it in the ConnectionList
+				pageFileInstance.CustomObjectName = customObjectName;
+				var obj = pageFileInstance.MessageHandler.ConnectionList.GetConnectionCustomObject( connectionID, pageFileInstance.CustomObjectName, ()=>pageFileInstance );
+				CommonLibs.Utils.Debug.ASSERT( obj == pageFileInstance, System.Reflection.MethodInfo.GetCurrentMethod(), "The registration of this 'GenericPageFile' did not return this instance (another one already exists)" );
+			}
 
 			// And invoke the callback on the receiver class to give it the new instance
 			var assemblyName = request.QueryString[ RqstUploadReceiverAssembly ];
@@ -158,7 +168,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 			if( OnUploadStarted != null )
 				OnUploadStarted( request, uploadFileName );
 
-			string filePath = OnUploadGetFilePath();
+			string filePath = OnUploadGetFilePath( request, uploadFileName );
 
 			var fName = fileName;
 			onUploadTerminated = (success,size)=>
@@ -170,8 +180,9 @@ namespace CommonLibs.Web.LongPolling.Utils
 			return System.IO.File.Create( filePath );
 		}
 
-		private static string DefaultGetFilePath()
+		private static string DefaultGetFilePath(HttpRequest request, string uploadedFileName)
 		{
+			// NB: 'uploadedFileName' parameter not used
 			return System.IO.Path.GetTempPath() + Guid.NewGuid().ToString();
 		}
 
@@ -186,25 +197,6 @@ namespace CommonLibs.Web.LongPolling.Utils
 				return outputStream;
 			else
 				return System.IO.File.Open( filePath, System.IO.FileMode.Open );
-		}
-
-		public static string CreateDownloadUrl(string syncedHttpHandlerUrl, Type receiverType, string connectionID, IDictionary<string,string> parameters=null)
-		{
-			CommonLibs.Utils.Debug.ASSERT( receiverType != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'receiverType'" );
-			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(connectionID), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'connectionID'" );
-
-			Dictionary<string,string> parms;
-			if( parameters != null )
-				parms = new Dictionary<string,string>( parameters );
-			else
-				parms = new Dictionary<string,string>();
-			parms[ CommonLibs.Web.LongPolling.SyncedHttpHandler.RequestParmConnectionID ] = connectionID;
-			parms[ CommonLibs.Web.LongPolling.SyncedHttpHandler.RequestParmType ] = HandlerType;
-			foreach( var pair in CreateUploaderQueryParameters(receiverType) )
-				parms[ pair.Key ] = pair.Value;
-			var url = System.Web.VirtualPathUtility.ToAbsolute( syncedHttpHandlerUrl )
-					+ "?" + string.Join( "&", parms.Select( v=>HttpUtility.UrlEncode(v.Key) + "=" + HttpUtility.UrlEncode(v.Value) ).ToArray() );
-			return url;
 		}
 	}
 }

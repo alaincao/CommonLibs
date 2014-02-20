@@ -230,7 +230,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 		/// <summary>
 		/// Download the current file
 		/// </summary>
-		public virtual void Get(SyncedHttpHandler handler, string connectionID, HttpContext context)
+		public virtual void Get(string connectionID, HttpContext context)
 		{
 			var response = context.Response;
 			response.Clear();
@@ -260,7 +260,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 		/// <summary>
 		/// Upload a new file, replacing the current one if any
 		/// </summary>
-		public virtual void Post(SyncedHttpHandler handler, string connectionID, HttpContext context)
+		public virtual void Post(string connectionID, HttpContext context)
 		{
 			bool uploadSuccessful = false;
 			string fileName = null;
@@ -283,7 +283,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 				var contentLength = context.Request.ContentLength;
 
-				if( (contentLength >= 0) // NB: when the file size > ~2Gb, the browsers bug and send negative ContentLenghts
+				if( (contentLength > 0) // NB: when the file size > ~2Gb, the browsers bug and send negative (or null) ContentLenghts
 				 && (contentLength <= UploadLengthForStreamParser) )
 				{
 					// Directly use the Request.Files to perform the upload
@@ -334,7 +334,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 							outStream.Write( buffer, 0, n );
 							fileSize += n;
 
-							if( (MaximumUploadSize != null) && (n > MaximumUploadSize.Value) )
+							if( (MaximumUploadSize != null) && (fileSize > MaximumUploadSize.Value) )
 								throw new MaximumUploadSizeException( "This uploaded file is too big ; The maximum upload size has been set to '" + MaximumUploadSize + "'" );
 
 							var now = DateTime.Now;
@@ -373,11 +373,11 @@ namespace CommonLibs.Web.LongPolling.Utils
 				// Save exception to give to 'onUploadTerminatedCallback'
 				terminationException = ex;
 			}
-
-			if(! uploadSuccessful )
+			finally
 			{
 				if( outStream != null )
 				{
+					FAIL( "Variable 'outStream' not correctly released. Forcing discard." );
 					try { outStream.Dispose(); }
 					catch( System.Exception ex ) { FAIL( "'outStream.Dispose()' threw an exception (" + ex.GetType().FullName + "): " + ex.Message ); }
 				}
@@ -446,7 +446,6 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 		private void SendEndOfFileFileMessage(string fileName, long fileSize, bool success, Exception exception)
 		{
-			ASSERT( !string.IsNullOrEmpty(fileName), "Missing parameter 'fileName'" );
 			ASSERT( fileSize >= 0, "Invalid parameter 'fileSize'" );
 
 			var message = CreateCustomMessage( OutMsgTypeFinish );
@@ -466,6 +465,10 @@ namespace CommonLibs.Web.LongPolling.Utils
 										 + exception.StackTrace;
 					message.Add( OutMsgParmException, exceptionMessage );
 				}
+			}
+			else
+			{
+				ASSERT( !string.IsNullOrEmpty(fileName), "Missing parameter 'fileName'" );
 			}
 
 			MessageHandler.SendMessageToConnection( ConnectionID, message );

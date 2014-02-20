@@ -49,7 +49,7 @@ namespace CommonLibs.Web.LongPolling
 		private static string					jsClientPathFull				= null;
 
 		/// <remarks>JQuery JavaScript files must be included before this script declaration (i.e. in the page's 'head' tag)</remarks>
-		public static string CreateJSClientInitializationBlock(Page page, string jsObjectName, string longPollingHandlerUrl, string longPollingSyncedHandlerUrl, string logoutUrl, bool startDirectly=false)
+		public static string CreateJSClientInitializationBlock(Page page, string jsObjectName=null, string longPollingHandlerUrl=null, string longPollingSyncedHandlerUrl=null, string logoutUrl=null, bool startDirectly=false)
 		{
 			//page.ClientScript.RegisterClientScriptInclude( "b9aa3021-1492-6bab-31e0-03caf8ca46d3", path );  <= Not soon enough in the declarations (inside the <body> tag ; We want it in the <head> tag)
 

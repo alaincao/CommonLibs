@@ -39,8 +39,8 @@ namespace CommonLibs.Web.LongPolling
 	{
 		public interface ISyncedRequestHandler
 		{
-			void Get(SyncedHttpHandler handler, string connectionID, HttpContext context);
-			void Post(SyncedHttpHandler handler, string connectionID, HttpContext context);
+			void Get(string connectionID, HttpContext context);
+			void Post(string connectionID, HttpContext context);
 		}
 
 		public bool									IsReusable					{ get { return true; } }
@@ -66,10 +66,10 @@ namespace CommonLibs.Web.LongPolling
 			switch( context.Request.HttpMethod )
 			{
 				case "GET":
-					handler.Get( this, connectionID, context );
+					handler.Get( connectionID, context );
 					break;
 				case "POST":
-					handler.Post( this, connectionID, context );
+					handler.Post( connectionID, context );
 					break;
 				default:
 					throw new NotImplementedException( "Unknown request type '" + context.Request.HttpMethod + "'" );
