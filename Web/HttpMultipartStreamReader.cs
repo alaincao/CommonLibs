@@ -340,25 +340,33 @@ namespace CommonLibs.Web
 			{
 				// ContentBoundary not found
 
-				// Flush the searchBuffer (minus the end)
+				// Flush the searchBuffer (minus the last bytes that may contain the 'ContentBoundary')
 				var flushBufferSize = searchBuffer.Length - ContentBoundary.Length;
-				switch( State )
+				if( flushBufferSize <= 0 )
 				{
-					case States.ReadingVariableContent:
-						if( OnVariableContentReceived != null )
-							OnVariableContentReceived( searchBuffer, flushBufferSize );
-						break;
-					case States.ReadingFileContent:
-						if( OnFileContentReceived != null )
-							OnFileContentReceived( searchBuffer, flushBufferSize );
-						break;
-					default:
-						throw new NotImplementedException( "State '" + State + "' is not supported here" );
+					// 'searchBuffer' is too small to contain data that can be flushed => Keep it as pending for next iteration
+					PendingBuffer = searchBuffer;
 				}
+				else
+				{
+					switch( State )
+					{
+						case States.ReadingVariableContent:
+							if( OnVariableContentReceived != null )
+								OnVariableContentReceived( searchBuffer, flushBufferSize );
+							break;
+						case States.ReadingFileContent:
+							if( OnFileContentReceived != null )
+								OnFileContentReceived( searchBuffer, flushBufferSize );
+							break;
+						default:
+							throw new NotImplementedException( "State '" + State + "' is not supported here" );
+					}
 
-				// Put the end of the current buffer as pending for next iteration
-				PendingBuffer = new byte[ ContentBoundary.Length ];
-				searchBuffer.CopyTo( PendingBuffer, srcStartIndex:(searchBuffer.Length-PendingBuffer.Length), n:PendingBuffer.Length );
+					// Put the end of the current buffer as pending for next iteration
+					PendingBuffer = new byte[ ContentBoundary.Length ];
+					searchBuffer.CopyTo( PendingBuffer, srcStartIndex:(searchBuffer.Length-PendingBuffer.Length), n:PendingBuffer.Length );
+				}
 			}
 			else
 			{

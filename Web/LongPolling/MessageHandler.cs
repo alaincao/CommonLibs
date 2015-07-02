@@ -47,6 +47,15 @@ namespace CommonLibs.Web.LongPolling
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
+		public interface IRouter
+		{
+			string[]	TriggerMessageKeys		{ get; }
+
+			void		ReceiveTriggeredMessageFromConnection(Message message);
+			void		ReceiveMessageForUnmanagedConnection(string connectionID, Message message);
+			void		ReceiveMessageForUnmanagedSession(string sessionID, Message message);
+		}
+
 		private class CallbackItem
 		{
 			internal bool							IsThreaded						{ get { return (CallbackThreaded != null) ? true : false; } }
@@ -94,6 +103,7 @@ namespace CommonLibs.Web.LongPolling
 		#if DEBUG
 			private bool							MessageReceived					= false;
 		#endif
+		public IRouter								Router							= null;
 
 		/// <summary>
 		/// The list of messages currently waiting to be delivered<br/>
@@ -208,13 +218,30 @@ namespace CommonLibs.Web.LongPolling
 			LOG( "ConnectionList_ConnectionLost(" + connectionID + ") - Exit" );
 		}
 
-		internal void ReceiveMessage(Message message)
+		public void ReceiveMessage(Message message)
 		{
 			ASSERT( message != null, "Missing parameter 'message'" );
 			LOG( "ReceiveMessage(" + message + ") - Start" );
 			#if DEBUG
 				MessageReceived = true;
 			#endif
+
+			if( Router != null )
+			{
+				var triggerMessageKeys = Router.TriggerMessageKeys;
+				var n = triggerMessageKeys.Length;
+				for( int i=0; i<n; ++i )
+				{
+					var triggerKey = triggerMessageKeys[ i ];
+					if( message.ContainsKey(triggerKey) )
+					{
+						LOG( "ReceiveMessage(" + message + ") - Invoke router for this message" );
+						Router.ReceiveTriggeredMessageFromConnection( message );
+						LOG( "ReceiveMessage(" + message + ") - Router returned" );
+						goto EXIT;
+					}
+				}
+			}
 
 			CallbackItem callbackItem;
 			if(! HandlerCallbacks.TryGetValue(message.HandlerType, out callbackItem) )
@@ -231,11 +258,13 @@ namespace CommonLibs.Web.LongPolling
 				// Handle the message inside its own thread
 				TaskQueue.CreateTask( (taskEntry)=>{ HandleMessageThread(messageContext, taskEntry); } );
 			}
+
+		EXIT:
 			LOG( "ReceiveMessage(" + message + ") - Exit" );
 		}
 
 		/// <summary>
-		/// Method used by the message handlers to check if the just successfully processed message has inner messages to process
+		/// Method that can be used by the message handlers to check if a message has inner messages to process (and process them)
 		/// </summary>
 		/// <param name="originalMessage">The message that the handler successfully processed</param>
 		public void CheckChainedMessages(Message originalMessage, Dictionary<string,object> additionalInfo=null)
@@ -262,17 +291,23 @@ namespace CommonLibs.Web.LongPolling
 			}
 		}
 
-		/// <returns>The number of connection this message was sent to</returns>
-		public int SendMessageToSession(string receiverSessionID, Message message)
+		public void SendMessageToSession(string receiverSessionID, Message message)
 		{
 			ASSERT( !string.IsNullOrEmpty(receiverSessionID), "Missing parameter 'sessionID'" );
 			ASSERT( message != null, "Missing parameter 'message'" );
 			LOG( "SendMessageToSession(" + receiverSessionID + "," + message + ") - Start" );
 
 			var connectionIDs = ConnectionList.GetSessionConnectionIDs( receiverSessionID );
-			foreach( var connectionID in connectionIDs )
-				SendMessageToConnection( connectionID, message );
-			return connectionIDs.Length;
+			if( connectionIDs != null )
+			{
+				foreach( var connectionID in connectionIDs )
+					SendMessageToConnection( connectionID, message );
+			}
+			else  // The specified session does not belong to this instance
+			{
+				if( Router != null )
+					Router.ReceiveMessageForUnmanagedSession( receiverSessionID, message );
+			}
 		}
 
 		public void SendMessageToConnection(string receiverConnectionID, Message message)
@@ -355,18 +390,35 @@ namespace CommonLibs.Web.LongPolling
 			LOG( "CheckPendingQueueForConnection(" + receiverConnectionID + ") - Lock released" );
 
 			bool messagesSent;
+			bool connectionExists;
 			try
 			{
-				messagesSent = ConnectionList.SendMessagesToConnectionIfAvailable( receiverConnectionID, messagesList );
+				messagesSent = ConnectionList.SendMessagesToConnectionIfAvailable( receiverConnectionID, messagesList, out connectionExists );
 			}
 			catch( System.Exception ex )
 			{
 				// Something went wrong while sending the messages to the peer. Discard the messages so they are not tryed to be resent again (and maybe enter an infinite loop...)
 				FatalExceptionHandler( "Could not deliver messages - Error while sending data to peer", ex );
-				messagesSent = true;  // Discard the messages...
+				connectionExists = true;  // Discard the messages...
+				messagesSent = true;
 			}
 
-			if(! messagesSent )
+			if(! connectionExists )
+			{
+				if( Router != null )
+				{
+					foreach( var message in messagesList )
+					try
+					{
+						Router.ReceiveMessageForUnmanagedConnection( receiverConnectionID, message );
+					}
+					catch( System.Exception ex )
+					{
+						FatalExceptionHandler( "Could not deliver messages - Router.ReceiveMessageForUnmanagedConnection() threw an exception", ex );
+					}
+				}
+			}
+			else if(! messagesSent )
 			{
 				LOG( "CheckPendingQueueForConnection(" + receiverConnectionID + ") - Messages were not delivered => Requeue them" );
 				bool recheckAfter;

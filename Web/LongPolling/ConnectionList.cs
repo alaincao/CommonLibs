@@ -548,7 +548,10 @@ namespace CommonLibs.Web.LongPolling
 				//		and if the user has more than 1 page, the other pages will simply reconnect.
 				LOG( "RegisterConnection(" + connectionID + ") - Resetting " + otherConnectionIDsInSession.Length + " connections in the same SessionID" );
 				foreach( var otherConnectionID in otherConnectionIDsInSession )
-					SendMessagesToConnectionIfAvailable( otherConnectionID, new Message[]{} );
+				{
+					bool connectionExists;
+					SendMessagesToConnectionIfAvailable( otherConnectionID, new Message[]{}, out connectionExists );
+				}
 
 				CheckValidity();
 				LOG( "AllocateNewConnectionID(" + sessionID + ") - Exit: " + connectionID );
@@ -673,6 +676,28 @@ namespace CommonLibs.Web.LongPolling
 			return rc;
 		}
 
+		/// <summary>
+		/// Check if the specified connection is registered.
+		/// </summary>
+		public bool CheckConnectionExists(string connectionID)
+		{
+			LOG( "CheckConnectionIsAvailable(" + connectionID + ") - Start" );
+			bool rc;
+			lock( LockObject )
+			{
+				ConnectionEntry connectionEntry;
+				if( AllConnections.TryGetValue(connectionID, out connectionEntry) )
+					rc = true;
+				else
+					rc = false;
+			}
+			LOG( "CheckConnectionIsAvailable(" + connectionID + ") - Exit: " + rc );
+			return rc;
+		}
+
+		/// <summary>
+		/// Check if the specified connection is registered and its associated long polling request is currently connected to the server.
+		/// </summary>
 		public bool CheckConnectionIsAvailable(string connectionID)
 		{
 			LOG( "CheckConnectionIsAvailable(" + connectionID + ") - Start" );
@@ -794,7 +819,7 @@ namespace CommonLibs.Web.LongPolling
 			return sessionID;
 		}
 
-		/// <returns>The list of ConnecionIDs assigned to the specified sessionID if any or an empty list if none</returns>
+		/// <returns>The list of ConnecionIDs assigned to the specified sessionID if any ; an empty list if none ; 'null' if the session does not exists</returns>
 		public string[] GetSessionConnectionIDs(string sessionID)
 		{
 			ASSERT( !string.IsNullOrEmpty(sessionID), "Missing parameter 'sessionID'" );
@@ -806,7 +831,7 @@ namespace CommonLibs.Web.LongPolling
 				if(! AllSessions.TryGetValue(sessionID, out sessionEntry) )
 				{
 					//FAIL( "Session '" + sessionID + "' could not be found" );  <= In case of login/logout during development, this happens too often.
-					return new string[]{};
+					return null;
 				}
 				ASSERT( sessionEntry != null, "AllSessions.TryGetValue('" + sessionID + "') returned null" );
 				connectionArray = sessionEntry.ConnectionIDs.ToArray();
@@ -818,12 +843,8 @@ namespace CommonLibs.Web.LongPolling
 		/// Search for the requested connection and invokes a callback if this connection is registered and its associated long polling request is currently connected to the server.
 		/// </summary>
 		/// <param name="connectionID">The ConnectionID requested</param>
-		/// <param name="callback">
-		/// The callback to invoke if the requested connection is available.<br/>
-		/// Parameter 1: The connection that has been requested.
-		/// </param>
 		/// <returns>True if the requested connection was available the callback has been called.</returns>
-		public bool SendMessagesToConnectionIfAvailable(string connectionID, IEnumerable<Message> messages)
+		public bool SendMessagesToConnectionIfAvailable(string connectionID, IEnumerable<Message> messages, out bool connectionExists)
 		{
 			LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Start" );
 			var messagesToSend = new List<KeyValuePair<IConnection,RootMessage>>();
@@ -833,8 +854,14 @@ namespace CommonLibs.Web.LongPolling
 				if(! AllConnections.TryGetValue(connectionID, out connectionEntry) )
 				{
 					LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Exit - Connection was not registered!" );
+					connectionExists = false;
 					return false;
 				}
+				else
+				{
+					connectionExists = true;
+				}
+
 				if(! connectionEntry.Available )
 				{
 					LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Exit - Connection was not available" );

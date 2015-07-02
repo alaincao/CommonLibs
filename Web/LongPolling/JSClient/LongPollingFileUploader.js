@@ -46,6 +46,7 @@ function LongPollingFileUploader($uploadControl, messageHandler, options)
 		// Use the same as 'clientSideMsgHandlerType' except when 'serverSideRequestHandlerType' is overriden
 		self.serverSideCustomObjectName = options['serverSideRequestHandlerType'];
 	self.urlParameters = {};  // Values sent as query parameters to the posting URL (NB: Values set below)
+	self.validateSelectedFile = function(fileName){ return true; };  // Override this method to validate the selected file before the upload
 
 	// Bind to this event to receive internal errors.
 	// Parameter: The error description
@@ -128,6 +129,11 @@ function LongPollingFileUploader($uploadControl, messageHandler, options)
 		self.sendMessage( 'Abort' );
 	}
 
+	self.enable = function()
+	{
+		self.isDisabled = false;
+	}
+
 	self.disable = function()
 	{
 		self.isDisabled = true;
@@ -148,6 +154,7 @@ function LongPollingFileUploader($uploadControl, messageHandler, options)
 			self.isTrackingMouse = false;
 			self.$buttonDiv	.css( 'top', '-100px' )
 							.css( 'left', '-100px' );
+			return;
 		}
 
 		if( (ui.pageY < self.trackTop)
@@ -172,24 +179,38 @@ function LongPollingFileUploader($uploadControl, messageHandler, options)
 
 	self.onFileChange = function(fileName)
 	{
-		// Extract file name from full path
+		// Extract file name from full path (NB: full path not always provided depending on the browser)
 		var startIndex = (fileName.indexOf('\\') >= 0 ? fileName.lastIndexOf('\\') : fileName.lastIndexOf('/'));
 		fileName = fileName.substring(startIndex);
 		if (fileName.indexOf('\\') === 0 || fileName.indexOf('/') === 0)
 			fileName = fileName.substring(1);
 
-		// Trigger fileChanged event
-		try { self.trigger( self.fileChangedEvent, fileName ); }
-		catch(err) { try { self.trigger( self.internalErrorEvent, '"self.trigger( self.mouseOutEvent, null )" threw an error: ' + err ); } catch(err) {}; }
+		var isValid = self.validateSelectedFile( fileName );
+		if( isValid != true )
+			// Discard
+			return;
+
+		self.triggerFileChangedEvent( fileName );
 
 		// Set the form's posting URL
 		var formAction = self.messageHandler.getSyncedHandlerUrl() + '?' + $.param( self.urlParameters );
 		self.$form.attr( 'action', formAction );
 
 		// Send file
-		self.isUploading = true;
 		self.$form[0].submit();
 	};
+
+	self.triggerFileChangedEvent = function(fileName)
+	{
+		try { self.trigger( self.fileChangedEvent, fileName ); }
+		catch(err) { try { self.trigger( self.internalErrorEvent, '"self.trigger( self.mouseOutEvent, null )" threw an error: ' + err ); } catch(err) {}; }
+
+		// Upload started
+		self.isUploading = true;
+		// Force move the $fileInput away from above the $uploadControl
+		self.isTrackingMouse = true;
+		self.onDocumentMouseMove( /*ui*/null );
+	}
 
 	self.resetIFrame = function()
 	{
@@ -290,7 +311,15 @@ function LongPollingFileUploader($uploadControl, messageHandler, options)
 				self.urlParameters['FileID'] = customObjectName;
 			}
 
-			if( messageType == self.terminatedEvent )
+			if( (messageType == self.startEvent) || (messageType == self.progressEvent) )
+			{
+				if(! self.isUploading )
+				{
+					// Firefox sometimes re-send the file 1X if the upload fails => without triggering the 'change' event on the upload control => Witout calling 'self.onFileChange()'
+					self.triggerFileChangedEvent( message['FileName'] );  // Simulate the user's file selection
+				}
+			}
+			else if( messageType == self.terminatedEvent )
 			{
 				self.isUploading = false;
 				var exceptionMessage = message['Exception'];

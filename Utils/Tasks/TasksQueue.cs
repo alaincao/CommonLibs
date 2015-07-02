@@ -46,6 +46,8 @@ namespace CommonLibs.Utils.Tasks
 		private class VolatileContainer<T> where T : class { public volatile T Value; }
 
 		public int										MaximumConcurrentTasks		= 10;
+		/// <summary>The Timer class does not support timeouts > than 'System.Int32.MaxValue' miliseconds (~24 days (?) ) => Setting a maximum value (much lower than the maximum just in case)</summary>
+		private const int								MaximumTimeoutHours			= 24;
 		/// <summary>If this property is set to true, the CultureInfo of the thread that calls CreateTask() is copied to all created Threads</summary>
 		public bool										TransferCultureInfo			= true;
 
@@ -436,6 +438,12 @@ namespace CommonLibs.Utils.Tasks
 					if( createTimer )
 					{
 						var timeSpan = (topItem.Value.Key - now);
+						if( timeSpan.TotalHours > MaximumTimeoutHours )
+						{
+							
+							LOG( "CheckDelayedTasks() - Timeout value is too big (" + timeSpan + ") ; Reducing to " + MaximumTimeoutHours + " hours" );
+							timeSpan = new TimeSpan( hours:MaximumTimeoutHours, minutes:0, seconds:0 );
+						}
 						LOG( "CheckDelayedTasks() - Creating timer for " + timeSpan );
 						var timer = new Timer( (state)=>{CheckDelayedTasks();}, null, timeSpan, new TimeSpan(-1) );
 						CurrentTimer = timer;

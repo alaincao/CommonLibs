@@ -184,15 +184,16 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 		}
 	}
 
-	this.sendMessage = function(messageContent, successCallback, errorCallback)
+	this.sendMessages = function(messages)
 	{
 		if( this.__pendingMessages == null )
 			this.__pendingMessages = [];
 
-		var messageItem = {	'content': messageContent,
-							'successCallback': successCallback,
-							'errorCallback': errorCallback };
-		this.__pendingMessages.push( messageItem );
+		for( var i=0; i<messages.length; ++i )
+		{
+			var messageItem = { 'content': messages[i] };
+			this.__pendingMessages.push( messageItem );
+		}
 
 		// Send pending messages if the request is available
 		this.verifyConnections();
@@ -371,7 +372,8 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 	$this.start						= function() { thisDOM.start(); };
 	$this.getSyncedHandlerUrl		= function() { return thisDOM.getSyncedHandlerUrl(); };
 	$this.getStatus					= function() { return thisDOM.getStatus(); };
-	$this.sendMessage				= function(message) { thisDOM.sendMessage( message ); };
+	$this.sendMessage				= function(message) { thisDOM.sendMessages( [message] ); };
+	$this.sendMessages				= function(messages) { thisDOM.sendMessages( messages ); };
 	$this.verifyConnections			= function() { thisDOM.verifyConnections(); };
 	$this.onConnectionIDReceived	= function(callback) { thisDOM.onConnectionIDReceived(callback); };
 

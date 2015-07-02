@@ -39,7 +39,7 @@ namespace CommonLibs.Web.LongPolling
 		private const string					TypeFatalException				= "exception";
 
 		// Reserved message keys for TypeMessages:
-		internal const string					KeySenderID						= RootMessage.KeySenderID;  // NB: use the same
+		public const string						KeySenderID						= RootMessage.KeySenderID;  // NB: use the same
 		public const string						KeyMessageHandler				= "type";
 		public const string						KeyMessageResponseHandler		= "reply_to_type";
 		internal const string					KeyMessageChainedMessages		= "chained_messages";

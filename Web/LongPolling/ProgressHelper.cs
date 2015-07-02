@@ -54,7 +54,7 @@ namespace CommonLibs.Web.LongPolling
 		private ConnectionList				ConnectionList						{ get { return MessageHandler.ConnectionList; } }
 
 		private int							CreatorThreadID;
-		private string						CustomObjectName;
+		protected string					CustomObjectName;
 		public bool							BoundToConnection					{ get { return ConnectionID != null; } }
 		public bool							BoundToSession						{ get { return SessionID != null; } }
 		private string						ConnectionID;
@@ -65,9 +65,11 @@ namespace CommonLibs.Web.LongPolling
 		/// <summary>When this instance is bound to a session, leave this property to 'true' to resend the last message if a new connection arrives in the this session</summary>
 		public bool							ResendLastMessageToNewConnections	= true;
 
-		public volatile bool				Aborted								= false;
+		public bool							Aborted								{ get { return aborted; } }
+		private volatile bool				aborted								= false;
 		/// <summary>Set the callback that must be invoked when the 'Dispose()' method is called from a different thread than the one that created this instance</summary>
-		public volatile Action				AbortCallback						= null;
+		public Action						AbortCallback						{ get { return abortCallback; } set { abortCallback = value; } }
+		private volatile Action				abortCallback						= null;
 		private bool						Terminated							= false;
 
 		/// <summary>Create the message to be sent to the peer when a text notification is to be displayed</summary>
@@ -134,11 +136,30 @@ namespace CommonLibs.Web.LongPolling
 			{
 				try
 				{
-					// Unregister as CustomObject
 					if( BoundToConnection )
+					{
+						ASSERT( ConnectionAllocatedCallback == null, "Property 'ConnectionAllocatedCallback' is not supposed to be set here" );
+
+						// Unregister as CustomObject from connection
 						ConnectionList.UnregisterConnectionCustomObject( ConnectionID, CustomObjectName );
+					}
 					else
+					{
+						try
+						{
+							// Stop watching for new connections
+							ASSERT( ConnectionAllocatedCallback != null, "Property 'ConnectionAllocatedCallback' is supposed to be set here" );
+							if( ConnectionAllocatedCallback != null )
+								ConnectionList.ConnectionAllocated -= ConnectionAllocatedCallback;
+						}
+						catch( System.Exception ex )
+						{
+							FAIL( "'ConnectionList.UnregisterXXXCustomObject()' threw an exception (" + ex.GetType().FullName + "): " + ex.Message );
+						}
+
+						// Unregister as CustomObject from session
 						ConnectionList.UnregisterSessionCustomObject( SessionID, CustomObjectName );
+					}
 				}
 				catch( System.Exception ex )
 				{
@@ -164,7 +185,7 @@ namespace CommonLibs.Web.LongPolling
 			else  // Another thread is calling this method (e.g. the connection/session has been closed or an explicit abortion is being requested)
 			{
 				// Notify the abortion to original thread
-				Aborted = true;
+				aborted = true;
 				var callback = AbortCallback;  // NB: Take the reference of the volatile member and work on this one!
 				if( callback != null )
 				{
@@ -175,7 +196,15 @@ namespace CommonLibs.Web.LongPolling
 			}
 		}
 
-		/// <returns>The registered ProgressHelper instance of null if none found</returns>
+		/// <summary>
+		/// Alias to method 'Dispose()'
+		/// </summary>
+		public void Abort()
+		{
+			Dispose();
+		}
+
+		/// <returns>The registered ProgressHelper instance or null if none found</returns>
 		public static T Get<T>(MessageHandler messageHandler, string connectionID , string customObjectName) where T:ProgressHelper
 		{
 			CommonLibs.Utils.Debug.ASSERT( messageHandler != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'messageHandler'" );

@@ -42,6 +42,13 @@ namespace CommonLibs.Utils
 			return str.Replace( "'", "\\'" );
 		}
 
+		public static string EscapeDQuotes(this string str)
+		{
+			if( str == null )
+				return null;
+			return str.Replace( "\"", "\\\"" );
+		}
+
 		public static string Left(this string str, int n)
 		{
 			if( str == null )

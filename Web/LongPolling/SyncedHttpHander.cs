@@ -37,6 +37,10 @@ namespace CommonLibs.Web.LongPolling
 {
 	public abstract class SyncedHttpHandler : IHttpHandler, IReadOnlySessionState
 	{
+		[System.Diagnostics.Conditional("DEBUG")] protected void LOG(string message)				{ CommonLibs.Utils.Debug.LOG( this, message ); }
+		[System.Diagnostics.Conditional("DEBUG")] protected void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
+		[System.Diagnostics.Conditional("DEBUG")] protected void FAIL(string message)				{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
+
 		public interface ISyncedRequestHandler
 		{
 			void Get(string connectionID, HttpContext context);

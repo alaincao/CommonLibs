@@ -163,5 +163,12 @@ namespace CommonLibs.Web.LongPolling.Utils
 			var str = serializer.Serialize( dict );
 			return str;
 		}
+
+		public static string ToJSON(this IEnumerable<object> list)
+		{
+			var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
+			var str = serializer.Serialize( list );
+			return str;
+		}
 	}
 }

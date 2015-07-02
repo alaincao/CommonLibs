@@ -377,7 +377,6 @@ namespace CommonLibs.Web.LongPolling.Utils
 			{
 				if( outStream != null )
 				{
-					FAIL( "Variable 'outStream' not correctly released. Forcing discard." );
 					try { outStream.Dispose(); }
 					catch( System.Exception ex ) { FAIL( "'outStream.Dispose()' threw an exception (" + ex.GetType().FullName + "): " + ex.Message ); }
 				}
