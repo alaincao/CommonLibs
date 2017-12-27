@@ -165,13 +165,25 @@ namespace CommonLibs.Web
 			switch( State )
 			{
 				case States.Initial: {
-					if( buffer.IndexOf(ContentBoundaryInitial) != 0 )
+					if( PendingBuffer == null )
+					{
+						PendingBuffer = new byte[ n ];
+						buffer.CopyTo( PendingBuffer, n:n );
+					}
+					else
+					{
+						PendingBuffer = PendingBuffer.Concat( buffer, dstCount:n );
+					}
+					if( PendingBuffer.Length < ContentBoundaryInitial.Length )
+						// The content boundary has not been loaded entirely => Proceed with next buffer
+						break;
+					if( PendingBuffer.IndexOf(ContentBoundaryInitial) != 0 )
 						throw new ArgumentException( "POSTed data does not start with the ContentBoundary" );
 					// Switch to state 'ReadingContentHeader'
-					n = n - ContentBoundaryInitial.Length;
-					var newBuffer = new byte[ n ];
-					buffer.CopyTo( newBuffer, srcStartIndex:ContentBoundaryInitial.Length, n:n );
-					buffer = newBuffer;
+					n = PendingBuffer.Length - ContentBoundaryInitial.Length;
+					buffer = new byte[ n ];
+					PendingBuffer.CopyTo( buffer, srcStartIndex:ContentBoundaryInitial.Length, n:n );
+					PendingBuffer = null;
 					State = States.ReadingContentHeader;
 					goto case States.ReadingContentHeader; }
 				case States.ReadingVariableContent:

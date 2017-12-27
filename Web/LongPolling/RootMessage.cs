@@ -13,8 +13,8 @@ namespace CommonLibs.Web.LongPolling
 		internal const string					TypeInit						= "init";
 		internal const string					TypePoll						= "poll";
 		internal const string					TypeMessages					= "messages";
-		private const string					TypeReset						= "reset";
-		private const string					TypeLogout						= "logout";
+		internal const string					TypeReset						= "reset";
+		internal const string					TypeLogout						= "logout";
 
 		// Message keys:
 		internal const string					KeySenderID						= "sender";
@@ -23,7 +23,7 @@ namespace CommonLibs.Web.LongPolling
 		private RootMessage() : base()  {}
 		private RootMessage(IDictionary<string,object> content) : base(content)  {}
 
-		internal static RootMessage CreateInitRootMessage(string connectionID)
+		internal static RootMessage CreateServer_Init(string connectionID)
 		{
 			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(connectionID), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'connectionID'" );
 
@@ -34,19 +34,19 @@ namespace CommonLibs.Web.LongPolling
 		}
 
 		/// <remarks>Once the connection has been registered to the ConnectionList, this message can only be sent by this ConnectionList (inside its lock()) to avoid multiple threads trying to send message through the same connection</remarks>
-		internal static RootMessage CreateResetRootMessage()
+		internal static RootMessage CreateServer_Reset()
 		{
 			var message = new RootMessage {
 								{ RootMessage.TypeKey, RootMessage.TypeReset } };
 			return message;
 		}
 
-		internal static RootMessage CreateEmptyResponseMessage()
+		internal static RootMessage CreateServer_EmptyResponse()
 		{
-			return CreateRootMessage( new Message[]{} );
+			return CreateServer_MessagesList( new Message[]{} );
 		}
 
-		internal static RootMessage CreateRootMessage(IEnumerable<Message> messageContents)
+		internal static RootMessage CreateServer_MessagesList(IEnumerable<Message> messageContents)
 		{
 			var message = new RootMessage {
 								{ RootMessage.TypeKey, RootMessage.TypeMessages },
@@ -55,10 +55,50 @@ namespace CommonLibs.Web.LongPolling
 		}
 
 		/// <remarks>Once the connection has been registered to the ConnectionList, this message can only be sent by this ConnectionList (inside its lock()) to avoid multiple threads trying to send message through the same connection</remarks>
-		internal static RootMessage CreateLogoutRootMessage()
+		internal static RootMessage CreateServer_Logout()
 		{
 			var message = new RootMessage {
 								{ RootMessage.TypeKey, RootMessage.TypeLogout } };
+			return message;
+		}
+
+		internal static RootMessage CreateServer_Exception(System.Exception ex)
+		{
+			return CreateServer_MessagesList( new Message[]{ Message.CreateExceptionMessage(exception:ex) } );
+		}
+
+		/// <remarks>Used by client only</remarks>
+		internal static RootMessage CreateClientInit()
+		{
+			var message = new RootMessage {
+								{ RootMessage.TypeKey, RootMessage.TypeInit } };
+			return message;
+		}
+
+		internal static RootMessage CreateClient_Poll(string connectionID)
+		{
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrWhiteSpace(connectionID), typeof(RootMessage), "Missing parameter 'connectionID'" );
+
+			var message = new RootMessage {
+								{ RootMessage.TypeKey, RootMessage.TypePoll },
+								{ RootMessage.KeySenderID, connectionID } };
+			return message;
+		}
+
+		internal static RootMessage CreateClient_ServerResponse(IDictionary<string,object> content)
+		{
+			return new RootMessage( content );
+		}
+
+		internal static RootMessage CreateClient_MessagesList(string connectionID, IEnumerable<Message> messageContents)
+		{
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrWhiteSpace(connectionID), typeof(RootMessage), "Missing parameter 'connectionID'" );
+			CommonLibs.Utils.Debug.ASSERT( messageContents != null, typeof(RootMessage), "Missing parameter 'messageContents'" );
+
+			var message = new RootMessage {
+								{ RootMessage.TypeKey, RootMessage.TypeMessages },
+								{ RootMessage.KeySenderID, connectionID },
+								{ RootMessage.TypeMessages, messageContents } };
 			return message;
 		}
 	}

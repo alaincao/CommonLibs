@@ -96,13 +96,9 @@ namespace CommonLibs.Web.LongPolling
 			}
 		}
 
-		private TasksQueue							TaskQueue;
-// TODO: Alain: Once stable, check that all uses of 'ConnectionList' are outside lock()s (c.f. warning above)
+		public TasksQueue							TaskQueue						{ get; private set; }
 		public ConnectionList						ConnectionList					{ get; private set; }
 		private Dictionary<string,CallbackItem>		HandlerCallbacks				= new Dictionary<string,CallbackItem>();
-		#if DEBUG
-			private bool							MessageReceived					= false;
-		#endif
 		public IRouter								Router							= null;
 
 		/// <summary>
@@ -121,6 +117,18 @@ namespace CommonLibs.Web.LongPolling
 		/// Set this callback to determine the action to take when a fatal exception is detected whithin the MessageHandler
 		/// </summary>
 		public Action<string,Exception>				FatalExceptionHandler;
+
+		/// <summary>
+		/// Set this callback to determine the action to take when a message handler throws an exception.<br/>
+		/// The default behaviour is to send the exception message to the 'Message.SenderConnectionID'
+		/// </summary>
+		public Action<Message,Exception>			MessageHandlerExceptionHandler;
+
+		/// <summary>
+		/// Set this callback to determine the action to take when a message with an unknown type is received.<br/>
+		/// The default behaviour is to throw a 'NotImplementedException' (which then sends an exception message to the sender).
+		/// </summary>
+		public Action<Message>						UnknownMessageTypeHandler;
 
 		/// <summary>
 		/// Set this callback if any object must be kept from the HTTP handler's thread to the message handler's thread (e.g. session object)
@@ -148,53 +156,74 @@ namespace CommonLibs.Web.LongPolling
 					CheckPendingQueueForConnection( value );
 				};
 			ConnectionList.ConnectionLost += ConnectionList_ConnectionLost;
+
+			// Default behaviour for message handler's exceptions: Send an exception message to the sender
+			MessageHandlerExceptionHandler = (message, exception)=>
+				{
+					try
+					{
+						SendMessageToConnection( message.SenderConnectionID, Message.CreateExceptionMessage(exception:exception.InnerException ?? exception, sourceMessage:message) );
+					}
+					catch( System.Exception ex )
+					{
+						// An exception in the exception handler? Really??
+						FatalExceptionHandler( "The invokation to 'MessageHandlerExceptionHandler()' threw an exception", ex );
+					}
+				};
+
+			// Default behaviour for messages that have an unknown type: Throw a 'NotImplementedException'
+			UnknownMessageTypeHandler = (message)=>
+				{
+					throw new NotImplementedException( "There is no message handler defined for messages of type '" + message.HandlerType + "'" );
+				};
 		}
 
 		public string[] GetRegisteredMessageHandlers()
 		{
-			return HandlerCallbacks.Select( v=>v.Key ).ToArray();
+			string[] handlers;
+			lock( HandlerCallbacks )
+			{
+				handlers = HandlerCallbacks.Select( v=>v.Key ).ToArray();
+			}
+			return handlers;
 		}
-
-		#if DEBUG
-		/// <remarks>This method is not thread-safe and may crash => Use only for debugging purposes</remarks>
-		public void AddOrReplaceMessageHandler(string messageType, Action<Message> callback)
-		{
-			HandlerCallbacks[ messageType ] = new CallbackItem{ CallbackDirect = callback };
-		}
-
-		/// <remarks>This method is not thread-safe and may crash => Use only for debugging purposes</remarks>
-		public void AddOrReplaceMessageHandler(string messageType, Action<TaskEntry,Message> callback)
-		{
-			HandlerCallbacks[ messageType ] = new CallbackItem{ CallbackThreaded = callback };
-		}
-		#endif
 
 		public void AddMessageHandler(string messageType, Action<Message> callback)
 		{
-			ASSERT( !string.IsNullOrEmpty(messageType), "Missing parameter 'messageType'" );
+			ASSERT( !string.IsNullOrWhiteSpace(messageType), "Missing parameter 'messageType'" );
 			ASSERT( callback != null, "Missing parameter 'callback'" );
 
-			#if DEBUG
-				// NB: Access to HandlerCallbacks is not thread-safe protected. All calls to this method must be performed once at application start and not after.
-				ASSERT( !MessageReceived, "At least one message has already been received. AddMessageHandler() cannot be called anymore." );
-			#endif
-
-			ASSERT( !HandlerCallbacks.ContainsKey(messageType), "The message type '" + messageType + "' is already defined" );
-			HandlerCallbacks[ messageType ] = new CallbackItem{ CallbackDirect = callback };
+			lock( HandlerCallbacks )
+			{
+				HandlerCallbacks[ messageType ] = new CallbackItem{ CallbackDirect = callback };
+			}
 		}
 
 		public void AddMessageHandler(string messageType, Action<TaskEntry,Message> callback)
 		{
-			ASSERT( !string.IsNullOrEmpty(messageType), "Missing parameter 'messageType'" );
+			ASSERT( !string.IsNullOrWhiteSpace(messageType), "Missing parameter 'messageType'" );
 			ASSERT( callback != null, "Missing parameter 'callback'" );
 
-			#if DEBUG
-				// NB: Access to HandlerCallbacks is not thread-safe protected. All calls to this method must be performed once at application start and not after.
-				ASSERT( !MessageReceived, "At least one message has already been received. AddMessageHandler() cannot be called anymore." );
-			#endif
+			lock( HandlerCallbacks )
+			{
+				HandlerCallbacks[ messageType ] = new CallbackItem{ CallbackThreaded = callback };
+			}
+		}
 
-			ASSERT( !HandlerCallbacks.ContainsKey(messageType), "The message type '" + messageType + "' is already defined" );
-			HandlerCallbacks[ messageType ] = new CallbackItem{ CallbackThreaded = callback };
+		public bool RemoveMessageHandler(string messageType)
+		{
+			lock( HandlerCallbacks )
+			{
+				return HandlerCallbacks.Remove( messageType );
+			}
+		}
+
+		public bool HasMessageHandler(string messageType)
+		{
+			lock( HandlerCallbacks )
+			{
+				return HandlerCallbacks.ContainsKey( messageType );
+			}
 		}
 
 		private void DefaultFatalExceptionHandler(string description, Exception exception)
@@ -222,9 +251,6 @@ namespace CommonLibs.Web.LongPolling
 		{
 			ASSERT( message != null, "Missing parameter 'message'" );
 			LOG( "ReceiveMessage(" + message + ") - Start" );
-			#if DEBUG
-				MessageReceived = true;
-			#endif
 
 			if( Router != null )
 			{
@@ -244,8 +270,16 @@ namespace CommonLibs.Web.LongPolling
 			}
 
 			CallbackItem callbackItem;
-			if(! HandlerCallbacks.TryGetValue(message.HandlerType, out callbackItem) )
-				throw new NotImplementedException( "There is no message handler defined for messages of type '" + message.HandlerType + "'" );
+			lock( HandlerCallbacks )
+			{
+				if(! HandlerCallbacks.TryGetValue(message.HandlerType, out callbackItem) )
+					callbackItem = null;  // Should already be done
+			}
+			if( callbackItem == null )
+			{
+				UnknownMessageTypeHandler( message );
+				return;
+			}
 
 			var messageContext = new MessageContext( this, callbackItem, message );
 			if(! callbackItem.IsThreaded )
@@ -490,12 +524,12 @@ namespace CommonLibs.Web.LongPolling
 			catch( System.Reflection.TargetInvocationException ex )
 			{
 				LOG( "HandleMessageThread(" + taskEntry + "," + message + ") - TargetInvocationException" );
-				SendMessageToConnection( message.SenderConnectionID, Message.CreateExceptionMessage(exception:ex.InnerException, sourceMessage:message) );
+				MessageHandlerExceptionHandler( message, ex.InnerException );
 			}
 			catch( System.Exception ex )
 			{
 				LOG( "HandleMessageThread(" + taskEntry + "," + message + ") - Exception" );
-				SendMessageToConnection( message.SenderConnectionID, Message.CreateExceptionMessage(exception:ex, sourceMessage:message) );
+				MessageHandlerExceptionHandler( message, ex );
 			}
 			finally
 			{

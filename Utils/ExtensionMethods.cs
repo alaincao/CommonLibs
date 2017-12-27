@@ -93,6 +93,34 @@ namespace CommonLibs.Utils
 			return -1;
 		}
 
+		public static int? TryGet<K>(this IDictionary<K,int> dict, K key)
+		{
+			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'this'" );
+			CommonLibs.Utils.Debug.ASSERT( key != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'key'" );
+
+			int value;
+			if( dict.TryGetValue(key, out value) )
+				return value;
+			return null;
+		}
+
+		public static V TryGet<K,V>(this IDictionary<K,V> dict, K key)
+		{
+			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'this'" );
+			CommonLibs.Utils.Debug.ASSERT( key != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'key'" );
+
+			V value;
+			if( dict.TryGetValue(key, out value) )
+				return value;
+			return default( V );
+		}
+
+		public static void ForEach<T>(this IEnumerable<T> enumerable, Action<T> callback)
+		{
+			foreach( var item in enumerable )
+				callback( item );
+		}
+
 		public static void CopyTo(this byte[] src, byte[] dst, int srcStartIndex=0, int dstStartIndex=0, int n=-1)
 		{
 			CommonLibs.Utils.Debug.ASSERT( src != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'src'" );

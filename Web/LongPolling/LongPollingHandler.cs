@@ -76,8 +76,7 @@ namespace CommonLibs.Web.LongPolling
 				// Read request
 				var binData = context.Request.BinaryRead( context.Request.TotalBytes );
 				var strData = System.Text.UTF8Encoding.UTF8.GetString( binData );
-				var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
-				var requestMessage = (Dictionary<string,object>)serializer.DeserializeObject( strData );
+				var requestMessage = strData.FromJSONDictionary();
 
 				// Check message type
 				string messageType = (string)requestMessage[ RootMessage.TypeKey ];
@@ -91,13 +90,13 @@ namespace CommonLibs.Web.LongPolling
 						{
 							// Allocate a new ConnectionID and send it to the peer
 							connectionID = ConnectionList.AllocateNewConnectionID( sessionID );
-							responseMessage = RootMessage.CreateInitRootMessage( connectionID );
+							responseMessage = RootMessage.CreateServer_Init( connectionID );
 							LOG( "BeginProcessRequest() - Response message set to 'init'" );
 						}
 						else
 						{
 							// Init refused => Send 'logout'
-							responseMessage = RootMessage.CreateLogoutRootMessage();
+							responseMessage = RootMessage.CreateServer_Logout();
 							LOG( "BeginProcessRequest() - Response message set to 'logout'" );
 						}
 						break; }
@@ -112,7 +111,7 @@ namespace CommonLibs.Web.LongPolling
 						if(! ConnectionList.CheckConnectionIsValid(sessionID, connectionID) )
 						{
 							LOG( "BeginProcessRequest() *** The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );
-							responseMessage = RootMessage.CreateLogoutRootMessage();
+							responseMessage = RootMessage.CreateServer_Logout();
 							break;
 						}
 
@@ -134,7 +133,7 @@ namespace CommonLibs.Web.LongPolling
 						if(! ConnectionList.CheckConnectionIsValid(sessionID, connectionID) )
 						{
 							LOG( "BeginProcessRequest() *** The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );
-							responseMessage = RootMessage.CreateLogoutRootMessage();
+							responseMessage = RootMessage.CreateServer_Logout();
 							break;
 						}
 
@@ -168,11 +167,11 @@ namespace CommonLibs.Web.LongPolling
 						// NB: The first idea was to send pending messages (if there were any available) through the "messages" request instead of waiting for the "polling" request to send them.
 						// But since both requests could be sending concurrently, it would be hard for the client-side to receive all messages IN THE RIGHT ORDER
 						// => Always reply with an empty response message list ; Don't send the pending messages
-						responseMessage = RootMessage.CreateEmptyResponseMessage();
+						responseMessage = RootMessage.CreateServer_EmptyResponse();
 						break; }
 
 					default:
-						throw new NotImplementedException( "Unsupported message type '" + messageType + "'" );
+						throw new NotImplementedException( "Unsupported root message type '" + messageType + "'" );
 				}
 			}
 			catch( System.Exception ex )
@@ -181,9 +180,9 @@ namespace CommonLibs.Web.LongPolling
 
 				// Send exception to peer (right now ; not through the MessageHandler)
 				// NB: The actual message is a message list with only 1 item of type 'exception'
-				var exceptionMessage = RootMessage.CreateRootMessage( new Message[]{ Message.CreateExceptionMessage(exception:ex) } );
-				var exceptionResult = new LongPollingConnection( exceptionMessage, context, callback, asyncState );
-				return exceptionResult;
+				sessionID = null;
+				connectionID = null;
+				responseMessage = RootMessage.CreateServer_Exception( ex );
 			}
 			finally
 			{
@@ -199,20 +198,28 @@ namespace CommonLibs.Web.LongPolling
 			LOG( "BeginProcessRequest() - Creating the LongPollingConnection" );
 			var connection = new LongPollingConnection( sessionID, connectionID, context, callback, asyncState );
 
-			if( responseMessage == null )
+			if( responseMessage != null )
+			{
+				// A response is to be sent right now, and this connection is not to be registered
+			}
+			else
 			{
 				LOG( "BeginProcessRequest() - Nothing to send right now - registering LongPollingConnection to ConnectionList" );
-				if(! ConnectionList.RegisterConnection(connection) )
+				connection.RegisteredInConnectionList = true;
+				if(! ConnectionList.RegisterConnection(connection, startStaleTimeout:true) )
 				{
 					FAIL( "The SessionID/ConnectionID could not be found in the ConnectionList. Sending Logout message" );  // This check is already done above (only LOG()ged). This should really not happen often => FAIL()
-					responseMessage = RootMessage.CreateLogoutRootMessage();
+					connection.RegisteredInConnectionList = false;
+					responseMessage = RootMessage.CreateServer_Logout();
 				}
 			}
 
 			if( responseMessage != null )
 			{
 				LOG( "BeginProcessRequest() - Sending response right now" );
-				connection.SendResponseMessageSynchroneously( responseMessage );
+				connection.Sending = true;
+				connection.CompletedSynchronously = true;
+				connection.SendRootMessage( responseMessage );
 			}
 
 			LOG( "BeginProcessRequest() - Exit" );
@@ -224,12 +231,25 @@ namespace CommonLibs.Web.LongPolling
 			LOG( "EndProcessRequest() - Start" );
 
 			var connection = (LongPollingConnection)result;
-			ASSERT( connection.ResponseMessage != null, "EndProcessRequest() called but there are no ResponseMessage available" );  //  This method should be called by LongPollingConnection.SendResponseMessage() only
+			ASSERT( connection.Sending, "Sending an HTTP response message, but the connection's 'Sending' property is not set" );
+			ASSERT( connection.ResponseMessage != null, "EndProcessRequest() called but there are no ResponseMessage available" );  // This method should be called by LongPollingConnection.SendResponseMessage() only
 
 			// Write response to stream
-			var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
-			var str = serializer.Serialize( connection.ResponseMessage );
+			string str;
+			try
+			{
+				str = connection.ResponseMessage.ToJSON();
+			}
+			catch( System.Exception ex )
+			{
+				FAIL( "Serialization of response message failed ("+ex.GetType().FullName+"): "+ex.Message );
+				var exceptionMessage = RootMessage.CreateServer_Exception( ex );
+				str = exceptionMessage.ToJSON();
+			}
 			connection.HttpContext.Response.Write( str );
+
+			if( connection.RegisteredInConnectionList )
+				ConnectionList.UnregisterConnection( connection );
 
 			LOG( "EndProcessRequest() - End" );
 		}

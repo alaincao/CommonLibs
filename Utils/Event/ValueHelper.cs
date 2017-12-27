@@ -51,6 +51,11 @@ namespace CommonLibs.Utils.Event
 		public event Action			AvailableChanged;
 		public bool					NoTrigger			{ get; set; }
 
+		public static implicit operator T(ValueHelper<T> self)
+		{
+			return self.Value;
+		}
+
 		private void SetValue(T v)
 		{
 			T oldValue = value;

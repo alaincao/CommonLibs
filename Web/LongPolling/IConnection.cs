@@ -37,8 +37,12 @@ namespace CommonLibs.Web.LongPolling
 	{
 		string			SessionID					{ get; }
 		string			ConnectionID				{ get; }
+		bool			Sending						{ get; set; }
+
+		/// <summary>Explicitely close this connection</summary>
+		void Close(RootMessage rootMessage);
 
 		/// <summary>Send message to peer</summary>
-		void			SendResponseMessage(RootMessage rootMessage);
+		void			SendRootMessage(RootMessage rootMessage);
 	}
 }

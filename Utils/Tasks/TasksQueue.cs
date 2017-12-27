@@ -41,6 +41,63 @@ namespace CommonLibs.Utils.Tasks
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
+		/// <summary>Object to prevent threads from being stopped by the ASP.NET AppPool when a thread is still running</summary>
+		private class RegisteredObject : System.IDisposable, System.Web.Hosting.IRegisteredObject
+		{
+			private object			Locker		{ get { return this; } }
+
+			/// <summary>True if the 'HostingEnvironment' is currently stopping</summary>
+			public volatile bool	Stopping	= false;
+
+			public RegisteredObject()  {}
+
+			public void Register()
+			{
+				System.Web.Hosting.HostingEnvironment.IncrementBusyCount();
+				System.Web.Hosting.HostingEnvironment.RegisterObject( this );
+				Monitor.Enter( Locker );
+			}
+
+			public void Dispose()
+			{
+				try
+				{
+					Monitor.Exit( Locker );
+				}
+				catch( Exception ex )
+				{
+					CommonLibs.Utils.Debug.ASSERT( false, this, "Could not unlock 'RegisteredObject' instance ("+ex.GetType().FullName+"): "+ex.Message );
+				}
+
+				try
+				{
+					System.Web.Hosting.HostingEnvironment.UnregisterObject( this );
+				}
+				catch( Exception ex )
+				{
+					CommonLibs.Utils.Debug.ASSERT( false, this, "Could not unregister 'RegisteredObject' instance from 'HostingEnvironment' ("+ex.GetType().FullName+"): "+ex.Message );
+				}
+
+				try
+				{
+					System.Web.Hosting.HostingEnvironment.DecrementBusyCount();
+				}
+				catch( Exception ex )
+				{
+					CommonLibs.Utils.Debug.ASSERT( false, this, "Could not invoke 'DecrementBusyCount()' on 'HostingEnvironment' ("+ex.GetType().FullName+"): "+ex.Message );
+				}
+			}
+
+			void System.Web.Hosting.IRegisteredObject.Stop(bool immediate)
+			{
+				Stopping = true;
+				lock( Locker )
+				{
+					// NOOP ; Just assure the lock is released
+				}
+			}
+		}
+
 		/// <summary>Contains only a reference to 1 object declared as volatile</summary>
 		/// <remarks>Remove this class when C# allow local variables to be declared as volatile</remarks>
 		private class VolatileContainer<T> where T : class { public volatile T Value; }
@@ -50,6 +107,14 @@ namespace CommonLibs.Utils.Tasks
 		private const int								MaximumTimeoutHours			= 24;
 		/// <summary>If this property is set to true, the CultureInfo of the thread that calls CreateTask() is copied to all created Threads</summary>
 		public bool										TransferCultureInfo			= true;
+
+		/// <summary>
+		/// Register an IRegisteredObject against the hosting environment during the lifetime of the running tasks to prevent the application
+		/// pool from aborting the running tasks (e.g. when the ASP.NET application pool recycles)<br/>
+		/// See http://www.fsmpi.uni-bayreuth.de/~dun3/archives/signaling-iis-that-the-app-pool-is-still-busy-running-tasks-in-iis/523.html <br/>
+		/// and http://haacked.com/archive/2011/10/16/the-dangers-of-implementing-recurring-background-tasks-in-asp-net.aspx/
+		/// </summary>
+		public bool										RegisterInHostingEnvironment= false;
 
 		private DateTime								Now							{ get { return DateTime.UtcNow; } }
 
@@ -511,8 +576,16 @@ namespace CommonLibs.Utils.Tasks
 			ASSERT( entry != null, "Missing parameter 'entry'" );
 
 			System.Exception callbackException = null;
+			RegisteredObject registeredObject = null;
 			try
 			{
+				if( RegisterInHostingEnvironment )
+				{
+					LOG( "Register a new 'IRegisteredObject' to the .Net's 'HostingEnvironment'" );
+					registeredObject = new RegisteredObject();
+					registeredObject.Register();
+				}
+
 				// Copy CultureInfos to this thread
 				if( entry.CreatorCultureInfo != null )
 					Thread.CurrentThread.CurrentCulture = entry.CreatorCultureInfo;
@@ -524,6 +597,22 @@ namespace CommonLibs.Utils.Tasks
 			catch( System.Exception ex )
 			{
 				callbackException = ex;
+			}
+			finally
+			{
+				if( registeredObject != null )
+				{
+					try
+					{
+						LOG( "Unregister the 'IRegisteredObject' from the .Net's 'HostingEnvironment'" );
+						registeredObject.Dispose();
+					}
+					catch( System.Exception ex )
+					{
+						CommonLibs.Utils.Debug.ASSERT( false, entry, "Could not 'Dispose()' the 'IRegisteredObject' ("+ex.GetType().FullName+"): "+ex.Message );
+					}
+					registeredObject = null;
+				}
 			}
 
 			// The task's thread is terminated. Remove it from this queue.

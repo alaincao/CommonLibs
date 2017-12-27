@@ -51,6 +51,7 @@ namespace CommonLibs.Web.LongPolling
 
 		#endregion
 
+		internal bool					RegisteredInConnectionList				= false;
 		internal HttpContext			HttpContext								{ get; private set; }
 		private AsyncCallback			AsyncCallback;
 
@@ -58,6 +59,7 @@ namespace CommonLibs.Web.LongPolling
 
 		public string					SessionID								{ get; private set; }
 		public string					ConnectionID							{ get; private set; }
+		public bool						Sending									{ get; set; }
 
 		#endregion
 
@@ -78,27 +80,7 @@ namespace CommonLibs.Web.LongPolling
 
 			SessionID = sessionID;
 			ConnectionID = connectionID;
-		}
-
-		/// <remarks>Used for fatal exception messages caugth by the LongPollingHandler</remarks>
-		internal LongPollingConnection(RootMessage message, HttpContext httpContext, AsyncCallback asyncCallback, object asyncState)
-		{
-			ASSERT( message != null, "Missing parameter 'message'" );
-			ASSERT( httpContext != null, "Missing parameter 'httpContext'" );
-
-			AsyncState = asyncState;
-
-			HttpContext = httpContext;
-			AsyncCallback = asyncCallback;
-
-			SendResponseMessageSynchroneously( message );
-		}
-
-		/// <remarks>Can only be called from LongPollingHandler</remarks>
-		internal void SendResponseMessageSynchroneously(RootMessage responseMessage)
-		{
-			CompletedSynchronously = true;
-			SendResponseMessage( responseMessage );
+			Sending = false;
 		}
 
 		/// <remarks>
@@ -109,7 +91,7 @@ namespace CommonLibs.Web.LongPolling
 		/// This thread will try to create a new thread from the "AsyncCallback(this)".<br/>
 		/// The problem is that "AsyncCallback(this)" will then hang, waiting for a worker slot thread to liberate...
 		/// </remarks>
-		public void SendResponseMessage(RootMessage responseMessage)
+		public void SendRootMessage(RootMessage responseMessage)
 		{
 			ASSERT( responseMessage != null, "Missing parameter 'responseMessage'" );
 
@@ -134,6 +116,12 @@ namespace CommonLibs.Web.LongPolling
 			{
 				LOG( "*** Error while terminating the HTTP request - Could not invoke the request's callback (" + ex.GetType().FullName + "): " + ex.Message );
 			}
+		}
+
+		public void Close(RootMessage rootMessage)
+		{
+			// NB: Sending a message automatically close the connection ...
+			SendRootMessage( rootMessage );
 		}
 	}
 }

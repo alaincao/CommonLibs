@@ -51,6 +51,7 @@ namespace CommonLibs.Utils
 
 				AssertionFailureHandler = (sender,message)=>
 					{
+						System.Diagnostics.Debug.WriteLine( "*** ASSERTION FAILED ("+sender+"): "+message );
 						System.Diagnostics.Debug.Fail( "" + sender + "\n" + message );
 						//System.Diagnostics.Debugger.Break();
 					};
@@ -105,9 +106,8 @@ namespace CommonLibs.Utils
 			if( test )
 				return;
 
-			//LOG( sender, "*** ASSERTION FAILED: " + message + "\n" + Environment.StackTrace );
-			LOG( type, message );
-			System.Diagnostics.Debug.Fail( type + "\n" + message );
+			var sender = (type == null) ? "" : type.FullName;
+			AssertionFailureHandler( sender, message );
 		}
 
 		[System.Diagnostics.Conditional("DEBUG")]
@@ -118,14 +118,8 @@ namespace CommonLibs.Utils
 			if( test )
 				return;
 
-			string type = "";
-			if( method != null )
-				type = "" + method.Name;
-
-			//LOG( method, "*** ASSERTION FAILED: " + message + "\n" + Environment.StackTrace );
-			//System.Diagnostics.Debugger.Break();
-			LOG( method, message );
-			System.Diagnostics.Debug.Fail( type + "\n" + message );
+			var sender = (method == null) ? "" : method.Name;
+			AssertionFailureHandler( sender, message );
 		}
 
 		public static void DefaultFatalExceptionHandler(object sender, string description, Exception exception)

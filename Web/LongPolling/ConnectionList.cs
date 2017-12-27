@@ -32,6 +32,7 @@ using System.Threading;
 using System.Linq;
 using System.Web;
 
+using CommonLibs.Utils;
 using CommonLibs.Utils.Tasks;
 
 namespace CommonLibs.Web.LongPolling
@@ -47,12 +48,11 @@ namespace CommonLibs.Web.LongPolling
 
 		private class ConnectionEntry : IDisposable
 		{
-// TODO: Alain: Is it used? if yes, don't forget to check the warning above
 			internal ConnectionList					ConnectionList					{ get; private set; }
 			internal string							SessionID						{ get; private set; }
 			internal string							ConnectionID					{ get; private set; }
 			internal IConnection					Connection						= null;
-			internal bool							Available						{ get { return (!Disposed) && (Connection != null); } }
+			internal bool							Available						{ get { return (Connection != null) && (!Connection.Sending) && (!Disposed); } }
 			internal bool							Disposed						{ get; private set; }
 			internal TaskEntry						DisconnectionTimeout			= null;
 			internal TaskEntry						StaleTimeout					= null;
@@ -78,8 +78,9 @@ namespace CommonLibs.Web.LongPolling
 				Disposed = true;
 				if( Connection != null )
 				{
-					try { Connection.SendResponseMessage(RootMessage.CreateResetRootMessage()); }
-					catch( System.Exception ex ) { ConnectionList.FatalExceptionHandler( "Call to Connection.SendReset() threw an exception", ex ); }
+					ConnectionList.FAIL( "Disposing a ConnectionEntry but there is still a registered connection" );
+					try { Connection.Close( RootMessage.CreateServer_Reset() ); }
+					catch( System.Exception ex ) { ConnectionList.FatalExceptionHandler( "Call to Connection.Close() threw an exception", ex ); }
 				}
 				if( DisconnectionTimeout != null )
 				{
@@ -103,11 +104,12 @@ namespace CommonLibs.Web.LongPolling
 			private Dictionary<string,object>		customObjects					= null;
 		}
 
-		public const string							AspSessionCookie				= "ASP.NET_SessionId";
+		public static string						AspSessionCookie				{ get { return ( aspSessionCookie ?? (aspSessionCookie = GetSessionCookieName()) ); } set { aspSessionCookie = value; } }
+		private static string						aspSessionCookie				= null;  // NB: Default: "ASP.NET_SessionId"
 
 		private object								LockObject						{ get { return AllConnections; } }
 
-		/// <summary>If a connection stays disconnected more than this amount of seconds, it is considered definately disconnected</summary>
+		/// <summary>If a connection stays disconnected more than this amount of seconds, it is considered definitely disconnected</summary>
 		public int									DisconnectionSeconds			= 15;
 		/// <summary>If a polling connections stays inactive more than this amount of seconds, it is closed so the client can reopen it</summary>
 		public int									StaleConnectionSeconds			= 15;
@@ -125,16 +127,17 @@ namespace CommonLibs.Web.LongPolling
 		private Dictionary<string,SessionEntry>		AllSessions						= new Dictionary<string,SessionEntry>();
 
 		/// <summary>
+		/// Bind to this event to accept or reject incomming connections from clients<br/>
 		/// If there are callbacks assigned then they are called for each 'init' messages received.<br/>
-		/// If all the callbacks return false, then the 'init' will be refused and a 'logout' message will be replied.<br/>
+		/// If all the callbacks return false, then the connection will be refused to the client.<br/>
 		/// If at least one of them returns true, then the 'init' will be accepted and a new ConnectionID will be replied to the client.<br/>
 		/// Parameter 1: The message's dictionnary received from the client's 'init' message.<br/>
 		/// Parameter 2: The SessionID
 		/// Returns: true if the 'init' must be accepted.
 		/// </summary>
 		/// <remarks>Adding/removing callbacks to this event is NOT thread-safe and so should be done once at application initialization</remarks>
-		public event Func<Dictionary<string,object>,string,bool>	CheckInit			{ add { CheckInitCallbacks.Add(value); } remove { var rc=CheckInitCallbacks.Remove(value); ASSERT( rc, "Failed to remove CheckInit event's callback " + value ); } }
-		private List<Func<Dictionary<string,object>,string,bool>>	CheckInitCallbacks	= new List<Func<Dictionary<string,object>,string,bool>>();
+		public event Func<IDictionary<string,object>,string,bool>	CheckInit			{ add { CheckInitCallbacks.Add(value); } remove { var rc=CheckInitCallbacks.Remove(value); ASSERT( rc, "Failed to remove CheckInit event's callback " + value ); } }
+		private List<Func<IDictionary<string,object>,string,bool>>	CheckInitCallbacks	= new List<Func<IDictionary<string,object>,string,bool>>();
 
 		/// <summary>
 		/// Triggered when a session has been allocated (when a connection not yet associated to any session has been received)<br/>
@@ -161,7 +164,7 @@ namespace CommonLibs.Web.LongPolling
 		/// Triggered when a long polling request has just connected to the server.<br:>
 		/// Parameter 1: The ConnectionID that just connected.
 		/// </summary>
-		/// <remarks>Be aware that due to multithreading, the connection is not guaranteed to be available at the time of the event triggering</remarks>
+		/// <remarks>Be aware that due to multithreading, the connection is not guaranteed to be available at the time of the event processing</remarks>
 		public event Action<string>					ConnectionRegistered			{ add { ConnectionRegisteredAddCallback(value); } remove { ConnectionRegisteredRemoveCallback(value); } }
 		private List<Action<string>>				ConnectionRegisteredCallbacks	= new List<Action<string>>();
 
@@ -184,6 +187,13 @@ namespace CommonLibs.Web.LongPolling
 			TasksQueue = tasksQueue;
 		}
 
+		/// <see cref="https://stackoverflow.com/questions/3739537/how-to-programmatically-get-session-cookie-name"/>
+		public static string GetSessionCookieName()
+		{
+			var sessionStateSection = (System.Web.Configuration.SessionStateSection)System.Configuration.ConfigurationManager.GetSection("system.web/sessionState");
+			return sessionStateSection.CookieName;
+		}
+
 		public static string GetSessionID(HttpContext httpContext)
 		{
 			CommonLibs.Utils.Debug.ASSERT( httpContext != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing paramter 'httpContext'" );
@@ -200,6 +210,13 @@ namespace CommonLibs.Web.LongPolling
 				var sessionID = request.Cookies[ AspSessionCookie ];
 				return sessionID.Value;
 			}
+		}
+
+		public static string GetSessionID(System.Web.WebSockets.AspNetWebSocketContext socketContext)
+		{
+			CommonLibs.Utils.Debug.ASSERT( socketContext != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing paramter 'socketContext'" );
+			var sessionID = socketContext.Cookies[ AspSessionCookie ];
+			return sessionID.Value;
 		}
 
 		private void DefaultFatalExceptionHandler(string description, Exception exception)
@@ -407,8 +424,7 @@ namespace CommonLibs.Web.LongPolling
 
 			var customObjects = new List<object>();
 
-			var closedConnections = new List<string>();
-			var messagesToSend = new List<KeyValuePair<IConnection,RootMessage>>();
+			var finalizeActions = new List<Action>();
 			lock( LockObject )
 			{
 				LOG( "SessionEnded(" + sessionID + ") - Lock aquired" );
@@ -443,14 +459,21 @@ namespace CommonLibs.Web.LongPolling
 						AllConnections.Remove( connectionID );
 						if( connectionEntry.Connection != null )
 						{
-							// Send a logout message to the connection and forget it
-							messagesToSend.Add( new KeyValuePair<IConnection,RootMessage>(connectionEntry.Connection, RootMessage.CreateLogoutRootMessage()) );
+							var connection = connectionEntry.Connection;
+							connection.Sending = true;
+							finalizeActions.Add( ()=>
+								{
+									// Send a logout message to the connection and close it
+									try { connection.Close( RootMessage.CreateServer_Logout() ); }
+									catch( System.Exception ex ){ FAIL( "Call to 'connection.Close()' threw an exception ("+ex.GetType().FullName+"): "+ex.Message ); }
+
+									// Fire ConnectionLost event
+									ConnectionLostInvokeCallbacks( connection.ConnectionID );
+								} );
 							connectionEntry.Connection = null;
 						}
 						customObjects.AddRange( connectionEntry.CustomObjects.Select(v=>v.Value) );
 						connectionEntry.Dispose();
-
-						closedConnections.Add( connectionID );
 					}
 					catch( System.Exception ex )
 					{
@@ -462,13 +485,9 @@ namespace CommonLibs.Web.LongPolling
 				CheckValidity();
 			}
 
-			// Send messages (NB: must be outside any lock()s )
-			foreach( var pair in messagesToSend )
-				pair.Key.SendResponseMessage( pair.Value );
-
-			// Fire ConnectionLost event
-			foreach( var connectionID in closedConnections )
-				ConnectionLostInvokeCallbacks( connectionID );
+			// Execute all actions that must be performed outside the lock()
+			foreach( var finalizeAction in finalizeActions )
+				finalizeAction();
 
 			// Fire SessionClosed event
 			SessionClosedInvokeCallbacks( sessionID );
@@ -491,10 +510,10 @@ namespace CommonLibs.Web.LongPolling
 		}
 
 		/// <summary>
-		/// Called by the LongPollingHandler whe it receives an 'init' message to check if this message must be accepted or not.
+		/// Called by the LongPollingHandler when it receives an 'init' message to check if this message must be accepted or not.
 		/// </summary>
 		/// <returns>True if the 'init' message must be accepted, false otherwise</returns>
-		internal bool CheckInitAccepted(Dictionary<string,object> requestMessage, string sessionID)
+		internal bool CheckInitAccepted(IDictionary<string,object> requestMessage, string sessionID)
 		{
 			// Trigger the CheckInit event to check if the 'init' must be accepted
 
@@ -532,39 +551,30 @@ namespace CommonLibs.Web.LongPolling
 					sessionAllocated = true;
 				}
 
-				var otherConnectionIDsInSession = sessionEntry.ConnectionIDs.ToArray();
-
 				connectionID = Guid.NewGuid().ToString();
 				var connectionEntry = new ConnectionEntry( this, sessionID, connectionID );
 				AllConnections.Add( connectionID, connectionEntry );
 				sessionEntry.ConnectionIDs.Add( connectionID );
 
+				// The ConnectionID is connected but there is still no connection assigned to it => Must start a DisconnectionTimeout
 				LOG( "AllocateNewConnectionID(" + sessionID + ") - Starting DisconnectionTimeout" );
 				connectionEntry.DisconnectionTimeout = TasksQueue.CreateTask( 0, 0, 0, DisconnectionSeconds, 0, (taskEntry)=>{ConnectionEntry_DisconnectionTimeout(taskEntry, connectionEntry);} );
 				LOG( "AllocateNewConnectionID(" + sessionID + ") - Started DisconnectionTimeout " + connectionEntry.DisconnectionTimeout );
 
-				// Reset all other connections that are in the same session than this connection
-				// => So, if the user just changed its page, the connection of the old page is reset
-				//		and if the user has more than 1 page, the other pages will simply reconnect.
-				LOG( "RegisterConnection(" + connectionID + ") - Resetting " + otherConnectionIDsInSession.Length + " connections in the same SessionID" );
-				foreach( var otherConnectionID in otherConnectionIDsInSession )
-				{
-					bool connectionExists;
-					SendMessagesToConnectionIfAvailable( otherConnectionID, new Message[]{}, out connectionExists );
-				}
-
 				CheckValidity();
-				LOG( "AllocateNewConnectionID(" + sessionID + ") - Exit: " + connectionID );
-			}
+				LOG( "AllocateNewConnectionID(" + sessionID + ") - Release lock: " + connectionID );
+			}//lock( LockObject )
 
-			ConnectionAllocatedInvokeCallbacks( connectionID );
 			if( sessionAllocated )
 				SessionAllocatedInvokeCallbacks( sessionID );
+			ConnectionAllocatedInvokeCallbacks( connectionID );
+
+			LOG( "AllocateNewConnectionID(" + sessionID + ") - EXIT" );
 			return connectionID;
 		}
 
 		/// <returns>'false' if CheckValidity() returns false</returns>
-		internal bool RegisterConnection(IConnection connection)
+		internal bool RegisterConnection(IConnection connection, bool startStaleTimeout)
 		{
 			ASSERT( connection != null, "Missing parameter 'connection'" );
 			var connectionID = connection.ConnectionID;
@@ -573,7 +583,7 @@ namespace CommonLibs.Web.LongPolling
 			ASSERT( !string.IsNullOrEmpty(sessionID), "The connection has no 'SessionID'" );
 			LOG( "RegisterConnection(" + connectionID + ") - Start" );
 
-			var messagesToSend = new List<KeyValuePair<IConnection,RootMessage>>();
+			var finalizeActions = new List<Action>();
 			lock( LockObject )
 			{
 				LOG( "RegisterConnection(" + connectionID + ") - Lock aquired" );
@@ -591,7 +601,7 @@ namespace CommonLibs.Web.LongPolling
 
 				if( connectionEntry.DisconnectionTimeout == null )
 				{
-					FAIL( "We are supposed to be registering a long-polling HTTP connection to a currently disconnected IConnection. A DisconnectionTimeout is supposed to be running here" );
+					FAIL( "We are supposed to be registering a connection to a currently disconnected IConnection. A DisconnectionTimeout is supposed to be running here" );
 				}
 				else
 				{
@@ -603,7 +613,7 @@ namespace CommonLibs.Web.LongPolling
 
 				if( connectionEntry.StaleTimeout != null )
 				{
-					FAIL( "We are supposed to be registering a long-polling HTTP connection to a currently disconnected IConnection. No StaleTimeout is supposed to be running here" );
+					FAIL( "We are supposed to be registering a connection to a currently disconnected IConnection. No StaleTimeout is supposed to be running here" );
 					// Remove the (mistakenly) running StaleTimeout
 					LOG( "RegisterConnection(" + connectionID + ") - Unregistering StaleTimeout '" + connectionEntry.StaleTimeout + "'" );
 					connectionEntry.StaleTimeout.Remove();
@@ -612,34 +622,91 @@ namespace CommonLibs.Web.LongPolling
 
 				if( connectionEntry.Connection != null )
 				{
-					FAIL( "We are supposed to be registering a long-polling HTTP connection to a currently disconnected IConnection. No Connection is supposed to be present here" );
-					// Reset the (mistakenly) open connection
-					messagesToSend.Add( new KeyValuePair<IConnection,RootMessage>(connectionEntry.Connection, RootMessage.CreateResetRootMessage()) );
+					FAIL( "We are supposed to be registering a connection to a currently disconnected IConnection. No Connection is supposed to be present here" );
+					// Close & discard the original connection
+					var otherConnection = connectionEntry.Connection;
+					finalizeActions.Add( ()=>
+						{
+							// Send a reset message to the connection and close it
+							try { otherConnection.Close( RootMessage.CreateServer_Reset() ); }
+							catch( System.Exception ex ){ FAIL( "Call to 'connection.Close()' threw an exception ("+ex.GetType().FullName+"): "+ex.Message ); }
+						} );
 					connectionEntry.Connection = null;
 				}
 
 				// Associate the IConnection to the ConnectionEntry
 				connectionEntry.Connection = connection;
 
-				// Start the StaleTimeout
-				connectionEntry.StaleTimeout = TasksQueue.CreateTask( 0, 0, 0, StaleConnectionSeconds, 0, (taskEntry)=>{ConnectionEntry_StaleTimeout(taskEntry, connectionEntry);} );
-				LOG( "RegisterConnection(" + connectionID + ") - Started StaleTimeout '" + connectionEntry.StaleTimeout + "'" );
+				if( startStaleTimeout )
+				{
+					// Enable the timeout to automatically disconnect so the connection does not become stale
+					connectionEntry.StaleTimeout = TasksQueue.CreateTask( 0, 0, 0, StaleConnectionSeconds, 0, (taskEntry)=>{ConnectionEntry_StaleTimeout(taskEntry, connectionEntry);} );
+					LOG( "RegisterConnection(" + connectionID + ") - Started StaleTimeout '" + connectionEntry.StaleTimeout + "'" );
+				}
 
 				CheckValidity();
-			}
+			}//lock( LockObject )
 
-			// Send messages (NB: must be outside any lock()s )
-			foreach( var pair in messagesToSend )
-			{
-				LOG( "RegisterConnection(" + connectionID + ") - Send response message " + pair.Value + " to " + pair.Key );
-				pair.Key.SendResponseMessage( pair.Value );
-			}
+			// Execute all actions that must be performed outside the lock()
+			foreach( var finalizeAction in finalizeActions )
+				finalizeAction();
 
 			// Fire all ConnectionRegistered events
 			ConnectionRegisteredInvokeCallbacks( connectionID );
 
 			LOG( "RegisterConnection(" + connectionID + ") - Exit" );
 			return true;
+		}
+
+		/// <summary>Unlink this IConnection from its ConnectionID</summary>
+		internal void UnregisterConnection(IConnection connection)
+		{
+			ASSERT( connection != null, "Missing parameter 'connection'" );
+			var connectionID = connection.ConnectionID;
+			ASSERT( !string.IsNullOrEmpty(connectionID), "The connection has no 'ConnectionID'" );
+			var sessionID = connection.SessionID;
+			ASSERT( !string.IsNullOrEmpty(sessionID), "The connection has no 'SessionID'" );
+			LOG( "UnregisterConnection(" + connectionID + ") - Start" );
+
+			lock( LockObject )
+			{
+				LOG( "UnregisterConnection(" + connectionID + ") - Lock aquired" );
+				CheckValidity();
+
+				// Get the ConnectionEntry
+				var connectionEntry = AllConnections[ connectionID ];
+
+				if( connectionEntry.Connection != connection )
+				{
+					FAIL( (connectionEntry.Connection == null) ?
+							("UnregisterConnection(" + connectionID + ") - There is no registered connection for this ConnectionID") :
+							("UnregisterConnection(" + connectionID + ") - The specified connection is not the registered one") );
+					return;
+				}
+				connectionEntry.Connection = null;
+
+				if( connectionEntry.StaleTimeout != null )
+				{
+					LOG( "UnregisterConnection(" + connectionID + ") - Unregistering StaleTimeout " + connectionEntry.StaleTimeout );
+					connectionEntry.StaleTimeout.Remove();
+					connectionEntry.StaleTimeout = null;
+				}
+
+				if( connectionEntry.DisconnectionTimeout != null )
+				{
+					FAIL( "We are supposed to be unregistering a connection. No DisconnectionTimeout is supposed to be running here" );
+					connectionEntry.DisconnectionTimeout.Remove();
+					connectionEntry.DisconnectionTimeout = null;
+				}
+
+				LOG( "UnregisterConnection(" + connectionID + ") - Starting DisconnectionTimeout" );
+				connectionEntry.DisconnectionTimeout = TasksQueue.CreateTask( 0, 0, 0, DisconnectionSeconds, 0, (taskEntry)=>{ConnectionEntry_DisconnectionTimeout(taskEntry, connectionEntry);} );
+				LOG( "UnregisterConnection(" + connectionID + ") - Started DisconnectionTimeout " + connectionEntry.DisconnectionTimeout );
+
+				CheckValidity();
+			}
+
+			LOG( "UnregisterConnection(" + connectionID + ") - Exit" );
 		}
 
 		public bool CheckSessionIsValid(string sessionID)
@@ -844,62 +911,55 @@ namespace CommonLibs.Web.LongPolling
 		/// </summary>
 		/// <param name="connectionID">The ConnectionID requested</param>
 		/// <returns>True if the requested connection was available the callback has been called.</returns>
-		public bool SendMessagesToConnectionIfAvailable(string connectionID, IEnumerable<Message> messages, out bool connectionExists)
+		internal bool SendMessagesToConnectionIfAvailable(string connectionID, IEnumerable<Message> messages, out bool connectionIdExists)
 		{
 			LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Start" );
-			var messagesToSend = new List<KeyValuePair<IConnection,RootMessage>>();
+			IConnection connection;
+			ConnectionEntry connectionEntry;
 			lock( LockObject )
 			{
-				ConnectionEntry connectionEntry;
 				if(! AllConnections.TryGetValue(connectionID, out connectionEntry) )
 				{
-					LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Exit - Connection was not registered!" );
-					connectionExists = false;
+					LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Exit - Connection is not registered!" );
+					connectionIdExists = false;
 					return false;
 				}
 				else
 				{
-					connectionExists = true;
+					connectionIdExists = true;
 				}
 
 				if(! connectionEntry.Available )
 				{
-					LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Exit - Connection was not available" );
+					LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Exit - Connection is not available" );
 					return false;
 				}
 
 				LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Sending messages" );
-				try
-				{
-					ASSERT( connectionEntry.Connection != null, "If connectionEntry.Available, then connectionEntry.Connection is supposed to be set" );
-					messagesToSend.Add( new KeyValuePair<IConnection,RootMessage>(connectionEntry.Connection, RootMessage.CreateRootMessage(messages)) );
+				ASSERT( connectionEntry.Connection != null, "If connectionEntry.Available, then connectionEntry.Connection is supposed to be set" );
+				connection = connectionEntry.Connection;
 
-					if( connectionEntry.StaleTimeout == null )
-					{
-						FAIL( "We are sending messages through the polling connection ; A StaleTimeout is supposed to be running here" );
-					}
-					else
-					{
-						LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Unregistering StaleTimeout '" + connectionEntry.StaleTimeout + "'" );
-						connectionEntry.StaleTimeout.Remove();
-						connectionEntry.StaleTimeout = null;
-					}
-
-					ASSERT( connectionEntry.DisconnectionTimeout == null, "We are sending messages through the polling connection ; No DisconnectionTimeout is supposed to be running here" );
-					LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Starting DisconnectionTimeout" );
-					connectionEntry.DisconnectionTimeout = TasksQueue.CreateTask( 0, 0, 0, DisconnectionSeconds, 0, (taskEntry)=>{ConnectionEntry_DisconnectionTimeout(taskEntry, connectionEntry);} );
-					LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Started DisconnectionTimeout " + connectionEntry.DisconnectionTimeout );
-				}
-				finally
+				if( connectionEntry.StaleTimeout == null )
 				{
-					// Unregister the connection even if there were errors while sending data to the peer ; but let the exception pass through
-					connectionEntry.Connection = null;
+					#if( DEBUG )
+						if( connectionEntry.Connection is LongPollingConnection )
+							FAIL( "We are sending messages through the polling connection ; A StaleTimeout is supposed to be running here" );
+					#endif
 				}
-			}
+				else
+				{
+					LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Unregistering StaleTimeout '" + connectionEntry.StaleTimeout + "'" );
+					connectionEntry.StaleTimeout.Remove();
+					connectionEntry.StaleTimeout = null;
+				}
+
+				ASSERT( connectionEntry.DisconnectionTimeout == null, "We are sending messages and a connection is available ; No DisconnectionTimeout is supposed to be running here" );
+
+				connection.Sending = true;
+			}// lock( LockObject )
 
 			// Send messages (NB: must be outside any lock()s )
-			foreach( var pair in messagesToSend )
-				pair.Key.SendResponseMessage( pair.Value );
+			connection.SendRootMessage( RootMessage.CreateServer_MessagesList(messages) );  // NB: May unregister the connection (When it is an HTTP connection)
 
 			LOG( "SendMessagesToConnectionIfAvailable(" + connectionID + ") - Exit" );
 			return true;
@@ -937,9 +997,8 @@ namespace CommonLibs.Web.LongPolling
 				ASSERT( !string.IsNullOrEmpty(sessionID), "'connectionEntry.SessionID' is missing" );
 				CheckValidity();
 				ASSERT( AllConnections.ContainsKey(connectionID), "This ConnectionEntry is not handled by this ConnectionList" );
-				ASSERT( connectionEntry.Connection == null, "We are supposed to declare a long-polling HTTP connection definately disconnected. An active Connection is not supposed to be present here" );
 
-				// This connection is considered definately lost => Remove it from 'AllSessions' ...
+				// This connection is considered definitely lost => Remove it from 'AllSessions' ...
 				SessionEntry sessionEntry;
 				if(! AllSessions.TryGetValue(sessionID, out sessionEntry) )
 				{
@@ -959,6 +1018,8 @@ namespace CommonLibs.Web.LongPolling
 
 				// ... and Dispose() it.
 				customObjects.AddRange( connectionEntry.CustomObjects.Select(v=>v.Value) );
+				ASSERT( connectionEntry.Connection == null, "We are supposed to declare a long-polling HTTP connection definitely disconnected. An active Connection is not supposed to be present here" );
+				connectionEntry.Connection = null;  // Discard the connection if it exists anyways
 				connectionEntry.Dispose();
 
 				CheckValidity();
@@ -988,7 +1049,8 @@ namespace CommonLibs.Web.LongPolling
 		private void ConnectionEntry_StaleTimeout(CommonLibs.Utils.Tasks.TaskEntry taskEntry, ConnectionEntry connectionEntry)
 		{
 			LOG( "ConnectionEntry_StaleTimeout() - Start" );
-			var messagesToSend = new List<KeyValuePair<IConnection,RootMessage>>();
+			IConnection connection;
+			RootMessage messageToSend;
 			lock( LockObject )
 			{
 				ASSERT( connectionEntry != null, "Missing parameter 'connectionEntry'" );
@@ -1008,30 +1070,18 @@ namespace CommonLibs.Web.LongPolling
 				//connectionEntry.StaleTimeout.Dispose(); <= Don't dispose it, it is still running, it's this one!!!
 				connectionEntry.StaleTimeout = null;
 
-				var connectionID = connectionEntry.ConnectionID;
-				var sessionID = connectionEntry.SessionID;
-				ASSERT( !string.IsNullOrEmpty(connectionID), "'connectionEntry.ConnectionID' is missing" );
-				ASSERT( !string.IsNullOrEmpty(sessionID), "'connectionEntry.SessionID' is missing" );
-				CheckValidity();
-				ASSERT( AllConnections.ContainsKey(connectionID), "This ConnectionEntry is not handled by this ConnectionList" );
-				ASSERT( connectionEntry.Connection != null, "We are supposed to declare a long-polling HTTP connection stale. An active Connection is supposed to be present here" );
+				// Send a 'reset' message to peer
+				messageToSend = RootMessage.CreateServer_Reset();
+				connection = connectionEntry.Connection;
 
-				// Ask the peer to reconnect
-				messagesToSend.Add( new KeyValuePair<IConnection,RootMessage>(connectionEntry.Connection, RootMessage.CreateResetRootMessage()) );
-				connectionEntry.Connection = null;
-
-				// Start the DisconnectionTimeout
-				LOG( "ConnectionEntry_StaleTimeout('" + taskEntry + "', " + connectionEntry.ConnectionID + ") - Creating DisconnectionTimeout" );
-				connectionEntry.DisconnectionTimeout = TasksQueue.CreateTask( 0, 0, 0, DisconnectionSeconds, 0, (taskEntryParm)=>{ConnectionEntry_DisconnectionTimeout(taskEntryParm, connectionEntry);} );
-				LOG( "ConnectionEntry_StaleTimeout('" + taskEntry + "', " + connectionEntry.ConnectionID + ") - Created DisconnectionTimeout " + connectionEntry.DisconnectionTimeout );
+				connection.Sending = true;
 
 				CheckValidity();
 				LOG( "ConnectionEntry_StaleTimeout('" + taskEntry + "', " + connectionEntry.ConnectionID + ") - Exit" );
 			}
 
 			// Send messages (NB: must be outside any lock()s )
-			foreach( var pair in messagesToSend )
-				pair.Key.SendResponseMessage( pair.Value );
+			connection.SendRootMessage( messageToSend );
 		}
 
 		/// <summary>

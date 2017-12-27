@@ -1,10 +1,10 @@
 ﻿//
-// CommonLibs/Web/LongPolling/JSClient/LongPollingClient.js
+// CommonLibs/Web/LongPolling/JSClient/HttpClient.ts
 //
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
 //
-// Copyright (c) 2010 - 2013 Alain CAO
+// Copyright (c) 2010 - 2016 Alain CAO
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -26,7 +26,13 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
+// TODO: ACA: HttpClient: Rewrite in clean TypeScript !!!
+
+import { Message, ClientStatus } from './Client';
+
+declare var $: any;
+
+export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl:string)
 {
 	var $this = $(this);
 	this.$this = $this;
@@ -59,7 +65,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 	// Member variables: //
 	///////////////////////
 
-	this.__status					= 'DISCONNECTED';
+	this.__status					= ClientStatus.DISCONNECTED;
 
 	// URL of the server-side message handler
 	this.__handlerUrl				= handlerUrl;
@@ -92,18 +98,18 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 		var newStatus;
 		if( this.__pollingRequest == null )
 		{
-			newStatus = 'DISCONNECTED';
+			newStatus = ClientStatus.DISCONNECTED;
 		}
 		else if( this.__messageRequest != null )
 		{
 			if( this.__pendingMessages != null )
-				newStatus = 'PENDING';
+				newStatus = ClientStatus.PENDING;
 			else
-				newStatus = 'RUNNING';
+				newStatus = ClientStatus.RUNNING;
 		}
 		else
 		{
-			newStatus = 'CONNECTED';
+			newStatus = ClientStatus.CONNECTED;
 		}
 
 		if( this.__status != newStatus )
@@ -114,7 +120,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 		return newStatus;
 	}
 
-	this.onConnectionIDReceived = function(callback)
+	this.onConnectionIdReceived = function(callback:(cid:string)=>void)
 	{
 		if( this.__connectionID != null )
 		{
@@ -132,7 +138,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 			// The ConnectionID is not received yet => Bind the callback to the 'connectionIDReceivedEvent' trigger
 			this.$this.bind( this.$this.connectionIDReceivedEvent, (function(cb)
 						{
-							return function(evt,connectionID)
+							return function(evt:any,connectionID:string)
 							{
 								cb( connectionID );
 							}
@@ -142,12 +148,14 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 
 	this.verifyConnections = function()
 	{
+		var message : any;
+
 		if( this.__pollingRequest == null )
 		{
 			// The polling request must be (re)started => Send a simple poll request
-//console.log( 'starting poll' );
-			var message = {	'type': 'poll',
-							'sender': this.__connectionID };
+//console.log( 'POLL' );
+			message = {	'type': 'poll',
+						'sender': this.__connectionID };
 			this.__pollingRequest = new XMLHttpRequest();
 			this.__send( this.__pollingRequest, message );
 		}
@@ -169,22 +177,22 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 				var messageItem = this.__pendingMessages[ i ];
 
 				// Add message content to send
-				var message = messageItem[ 'content' ];
+				message = messageItem[ 'content' ];
 				messageContents.push( message );
+//console.log( 'SND', message );
 			}
 
 			// Send message
-//console.log( 'starting message' );
-			var message = {	'type': 'messages',
-							'sender': this.__connectionID,
-							'messages': messageContents };
+			message = {	'type': 'messages',
+						'sender': this.__connectionID,
+						'messages': messageContents };
 			this.__messageRequest = new XMLHttpRequest();
 			this.__send( this.__messageRequest, message );
 			this.__pendingMessages = null;  // No more pending messages
 		}
 	}
 
-	this.sendMessages = function(messages)
+	this.sendMessages = function(messages:Message[])
 	{
 		if( this.__pendingMessages == null )
 			this.__pendingMessages = [];
@@ -216,7 +224,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 //		if( $.browser.safari || $.browser.opera )
 //		{
 //			// Opera & Safari thinks the page is still loading until all the initial requests are terminated (which never happens in case of a long-polling...)
-//			// => Those browsers shows the 'turning wait icon' indefinately (Safari) or even worse never show the page! (Opera)
+//			// => Those browsers shows the 'turning wait icon' indefinitely (Safari) or even worse never show the page! (Opera)
 
 //			// Add a delay before sending the initial long-polling query
 //			self.$this.delay( 300 ).queue( function(){ sendRequestFunction(); } );
@@ -239,7 +247,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 			} );
 	}
 
-	this.__send = function(requestObject, messageObject)
+	this.__send = function(requestObject:XMLHttpRequest, messageObject:Message)
 	{
 		var strMessageObject = JSON.stringify( messageObject );
 		requestObject.open( "POST", this.__handlerUrl, true );
@@ -253,7 +261,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 		requestObject.send( strMessageObject );
 	};
 
-	this.__onRequestStateChange = function(request)
+	this.__onRequestStateChange = function(request:XMLHttpRequest)
 	{
 		try
 		{
@@ -285,6 +293,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 						if( responseType == 'init' )
 						{
 							this.__connectionID = response[ 'sender' ];
+//console.log( 'CID', this.__connectionID );
 
 							try
 							{
@@ -304,8 +313,8 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 						}
 						else if( responseType == 'logout' )
 						{
-//console.log( '__onRequestStateChange - logout' );
-							window.location = this.__logoutUrl;
+//console.log( 'LOGOUT' );
+							window.location.href = this.__logoutUrl;
 						}
 						else if( responseType == 'messages' )
 						{
@@ -316,6 +325,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 								{
 									var messageContent = messagesList[ i ];
 									var type = messageContent[ 'type' ];
+//console.log( 'RCV', messageContent );
 									this.$this.trigger( type, messageContent );
 								} catch( err ) {
 									// The assigned message handler threw an exception
@@ -348,7 +358,7 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 				else
 				{
 					try { this.$this.trigger( this.$this.internalErrorEvent, 'Server error (status="' + request.status + '")' ); } catch(err) {}
-// TODO: Alain: Maximum number of retry then definately disconnect
+// TODO: Alain: Maximum number of retry then definitely disconnect
 					//window.location = this.__logoutUrl;  // Redirect to logout page
 					this.verifyConnections();  // Try reconnect
 				}
@@ -372,10 +382,57 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 	$this.start						= function() { thisDOM.start(); };
 	$this.getSyncedHandlerUrl		= function() { return thisDOM.getSyncedHandlerUrl(); };
 	$this.getStatus					= function() { return thisDOM.getStatus(); };
-	$this.sendMessage				= function(message) { thisDOM.sendMessages( [message] ); };
-	$this.sendMessages				= function(messages) { thisDOM.sendMessages( messages ); };
+	$this.sendMessage				= function(message:Message) { thisDOM.sendMessages( [message] ); };
+	$this.sendMessages				= function(messages:Message[]) { thisDOM.sendMessages( messages ); };
 	$this.verifyConnections			= function() { thisDOM.verifyConnections(); };
-	$this.onConnectionIDReceived	= function(callback) { thisDOM.onConnectionIDReceived(callback); };
+
+	/////////////////////////////////////
+	// Implement Client.MessageHandler //
+	/////////////////////////////////////
+
+	$this.onConnectionIdReceived = function(callback:(cid:string)=>void)
+		{
+			thisDOM.onConnectionIdReceived(callback);
+			return $this;
+		};
+	$this.onStatusChanged = function(callback:(status:ClientStatus)=>void)
+		{
+			$this.bind( $this.statusChangedEvent, function(evt:any, status:ClientStatus)
+				{
+					callback( status );
+				} );
+			return $this;
+		};
+	$this.onInternalError = function(callback:(message:string)=>void)
+		{
+			$this.bind( $this.internalErrorEvent, function(e:any,message:string)
+				{
+					try
+					{
+						callback(message);
+					}
+					catch(err)
+					{
+						// NB: Really not much we can do here ...
+						if( (console != null) && (console.error != null) )
+							console.error( 'Error while invoking long_polling_client_error event', err );
+					}
+				} );
+		};
+	$this.onMessageHandlerFailed = function(callback:(message:string)=>void)
+		{
+			$this.bind( $this.messageHandlerFailedEvent, function(evt:any,error:any)
+				{
+					try
+					{
+						callback(error);
+					}
+					catch(err)
+					{
+						$this.trigger( $this.internalErrorEvent, 'Error while invoking message_handler_failed event: '+err );
+					}
+				} );
+		};
 
 	/////////////////////
 	// Initialization: //
@@ -384,3 +441,5 @@ function LongPollingClient(handlerUrl, syncedHandlerUrl, logoutUrl)
 	// Return the JQuery object
 	return $this;
 }
+
+export default HttpClient;

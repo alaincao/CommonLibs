@@ -157,18 +157,36 @@ namespace CommonLibs.Web.LongPolling.Utils
 			return connection;
 		}
 
-		public static string ToJSON(this IDictionary<string,object> dict)
+		public static List<Newtonsoft.Json.JsonConverter>		ToJSONConverters			= null;
+
+		public static string ToJSON(this object obj, IEnumerable<Newtonsoft.Json.JsonConverter> converters=null, bool indented=false)
 		{
-			var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
-			var str = serializer.Serialize( dict );
-			return str;
+			// !!! The default serializer in dotnet core lower-cases the first letters of all names => will break everything !!! => don't forget to change the default when upgrading to core ...
+			//var settings = new Newtonsoft.Json.JsonSerializerSettings{ ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver() };
+
+			var serializer = new Newtonsoft.Json.JsonSerializer();
+			if( ToJSONConverters != null )
+				foreach( var converter in ToJSONConverters )
+					serializer.Converters.Add( converter );
+			if( converters != null )
+				foreach( var converter in converters )
+					serializer.Converters.Add( converter );
+
+			var formatting = indented ? Newtonsoft.Json.Formatting.Indented : Newtonsoft.Json.Formatting.None;
+			if( converters == null )
+				return Newtonsoft.Json.JsonConvert.SerializeObject( obj, formatting );
+			else
+				return Newtonsoft.Json.JsonConvert.SerializeObject( obj, formatting, converters.ToArray() );
 		}
 
-		public static string ToJSON(this IEnumerable<object> list)
+		public static IDictionary<string,object> FromJSONDictionary(this string str)
 		{
 			var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
-			var str = serializer.Serialize( list );
-			return str;
+			serializer.MaxJsonLength = int.MaxValue - 100;
+			var dict = (Dictionary<string,object>)serializer.DeserializeObject( str );
+			return dict;
+
+			//return Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>( str );
 		}
 	}
 }

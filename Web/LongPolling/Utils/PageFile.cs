@@ -411,7 +411,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 			ASSERT( !string.IsNullOrEmpty(OutMsgHandlerType), "Property 'OutMsgHandlerType' has not been set yet" );
 			ASSERT( !string.IsNullOrEmpty(customMessageType), "Missing parameter 'customMessageType'" );
 
-			var message = Message.CreateEmtpyMessage( OutMsgHandlerType );
+			var message = Message.CreateEmptyMessage( OutMsgHandlerType );
 			message.Add( OutMsgTypeKey, customMessageType );
 			return message;
 		}

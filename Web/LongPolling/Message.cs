@@ -49,10 +49,10 @@ namespace CommonLibs.Web.LongPolling
 		private const string					KeyMessageExceptionStackTrace		= "stack";
 
 		public string							SenderConnectionID				{ get { object id; return this.TryGetValue(KeySenderID, out id) ? ""+id : null; } }
-		internal string							HandlerType						{ get { object handler; return this.TryGetValue(KeyMessageHandler, out handler) ? ""+handler : null; } }
+		public string							HandlerType						{ get { object handler; return this.TryGetValue(KeyMessageHandler, out handler) ? ""+handler : null; } }
 
 		private Message() : base()  {}
-		private Message(IDictionary<string,object> content) : base(content)  {}
+		internal Message(IDictionary<string,object> content) : base(content)  {}
 
 		public override string ToString()
 		{
@@ -137,7 +137,7 @@ namespace CommonLibs.Web.LongPolling
 			return message;
 		}
 
-		public static Message CreateEmtpyMessage(string peerHandlerType)
+		public static Message CreateEmptyMessage(string peerHandlerType)
 		{
 			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(peerHandlerType), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'peerHandlerType' parameter" );
 
@@ -149,11 +149,20 @@ namespace CommonLibs.Web.LongPolling
 		{
 			CommonLibs.Utils.Debug.ASSERT( exception != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'exception'" );
 
+			string stackTrace = exception.StackTrace;
+			{
+				for( var ex = exception.InnerException; ex != null ; ex = ex.InnerException )
+				{
+					stackTrace += "\n"+ex.Message+"\n";
+					stackTrace += ex.StackTrace;
+				}
+			}
+
 			// TODO: Alain: static CreateExceptionMessage(): Use ExceptionManager to create exception content and send it in the message.
 			var exceptionTemplate = new Dictionary<string,object> {  // Create the KeyMessageException with the exception content
 																	{ KeyMessageExceptionMessage, exception.Message },
 																	{ KeyMessageExceptionClass, exception.GetType().FullName },
-																	{ KeyMessageExceptionStackTrace, exception.StackTrace }
+																	{ KeyMessageExceptionStackTrace, stackTrace }
 																};
 
 			// Determine if there is a 'reply_to_type' handler to send to

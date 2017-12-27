@@ -91,16 +91,18 @@ namespace CommonLibs.Utils
 				Entry lastFree = null;
 				foreach( var e in entries )
 				{
+					var eThreadID = e.ThreadID;  // NB: Need to have an atomic access to this entry's member because it can be set to null by the 'Dispose' below (race condition)
+
 					if( e.ExpirationDate < now )
 					{
 						// This entry is expired => Don't use
 					}
-					else if( e.ThreadID == null )
+					else if( eThreadID == null )
 					{
 						// This entry is available
 						lastFree = e;
 					}
-					else if( e.ThreadID.Value == threadID )
+					else if( eThreadID.Value == threadID )
 					{
 						// This entry is assigned to this thread => Use it
 						entry = e;
@@ -148,7 +150,7 @@ namespace CommonLibs.Utils
 
 						// The top reference to this resource is disposing
 						// => This resource is no more associated to this thread => Liberate it
-						entry.ThreadID = null;  // NB: No need to 'lock{}'...
+						entry.ThreadID = null;  // Performance: No need to 'lock{}' ; c.f. "atomic access" comment above
 
 						// Dispose any expired references
 						CheckExpired();
