@@ -162,15 +162,15 @@ namespace CommonLibs.Web.LongPolling.Utils
 		public static string ToJSON(this object obj, IEnumerable<Newtonsoft.Json.JsonConverter> converters=null, bool indented=false)
 		{
 			// !!! The default serializer in dotnet core lower-cases the first letters of all names => will break everything !!! => don't forget to change the default when upgrading to core ...
-			//var settings = new Newtonsoft.Json.JsonSerializerSettings{ ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver() };
+			// var settings = new Newtonsoft.Json.JsonSerializerSettings { ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver() };
 
-			var serializer = new Newtonsoft.Json.JsonSerializer();
 			if( ToJSONConverters != null )
-				foreach( var converter in ToJSONConverters )
-					serializer.Converters.Add( converter );
-			if( converters != null )
-				foreach( var converter in converters )
-					serializer.Converters.Add( converter );
+			{
+				if( converters == null )
+					converters = ToJSONConverters;
+				else
+					converters = converters.Concat( ToJSONConverters );
+			}
 
 			var formatting = indented ? Newtonsoft.Json.Formatting.Indented : Newtonsoft.Json.Formatting.None;
 			if( converters == null )
