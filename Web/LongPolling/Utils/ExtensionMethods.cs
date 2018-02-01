@@ -4,7 +4,7 @@
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
 //
-// Copyright (c) 2010 - 2013 Alain CAO
+// Copyright (c) 2010 - 2018 Alain CAO
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -158,12 +158,12 @@ namespace CommonLibs.Web.LongPolling.Utils
 		}
 
 		public static List<Newtonsoft.Json.JsonConverter>		ToJSONConverters			= null;
+		public static List<Newtonsoft.Json.JsonConverter>		FromJSONConverters			= new List<Newtonsoft.Json.JsonConverter>{
+																									new JsonDictionaryConverter(),  // Serialize JSON dictionaries to 'IDictionary<string,object>' instead of Newtonsoft's 'JObject'
+																								};
 
 		public static string ToJSON(this object obj, IEnumerable<Newtonsoft.Json.JsonConverter> converters=null, bool indented=false)
 		{
-			// !!! The default serializer in dotnet core lower-cases the first letters of all names => will break everything !!! => don't forget to change the default when upgrading to core ...
-			// var settings = new Newtonsoft.Json.JsonSerializerSettings { ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver() };
-
 			if( ToJSONConverters != null )
 			{
 				if( converters == null )
@@ -179,14 +179,19 @@ namespace CommonLibs.Web.LongPolling.Utils
 				return Newtonsoft.Json.JsonConvert.SerializeObject( obj, formatting, converters.ToArray() );
 		}
 
-		public static IDictionary<string,object> FromJSONDictionary(this string str)
+		public static IDictionary<string,object> FromJSONDictionary(this string str, IEnumerable<Newtonsoft.Json.JsonConverter> converters=null)
 		{
-			var serializer = new System.Web.Script.Serialization.JavaScriptSerializer();
-			serializer.MaxJsonLength = int.MaxValue - 100;
-			var dict = (Dictionary<string,object>)serializer.DeserializeObject( str );
-			return dict;
-
-			//return Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>( str );
+			if( FromJSONConverters != null )
+			{
+				if( converters == null )
+					converters = FromJSONConverters;
+				else
+					converters = converters.Concat( FromJSONConverters );
+			}
+			if( converters == null )
+				return Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>( str );
+			else
+				return Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>( str, converters:converters.ToArray() );
 		}
 	}
 }

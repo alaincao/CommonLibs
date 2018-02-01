@@ -4,7 +4,7 @@
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
 //
-// Copyright (c) 2010 - 2013 Alain CAO
+// Copyright (c) 2010 - 2018 Alain CAO
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -28,59 +28,170 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Web;
 
+using Microsoft.AspNetCore.Http;
+
+using CommonLibs.Web.LongPolling.Utils;
+
 namespace CommonLibs.Web.LongPolling
 {
-	internal class LongPollingConnection : IAsyncResult, IConnection
+	internal class LongPollingConnection : IConnection
 	{
 		[System.Diagnostics.Conditional("DEBUG")] private void LOG(string message)					{ CommonLibs.Utils.Debug.LOG( this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		#region For IAsyncResult
-
-		public bool						IsCompleted								{ get { return (isCompleted != 0); } }
-		public int						isCompleted								= 0;
-		public bool						CompletedSynchronously					{ get; set; }
-		public WaitHandle				AsyncWaitHandle							{ get { throw new NotImplementedException( GetType().FullName + "::" + System.Reflection.MethodInfo.GetCurrentMethod().Name + "()" ); } }
-		public object					AsyncState								{ get; private set; }
-
-		#endregion
-
-		internal bool					RegisteredInConnectionList				= false;
-		internal HttpContext			HttpContext								{ get; private set; }
-		private AsyncCallback			AsyncCallback;
+		public MessageHandler	MessageHandler		{ get; private set; }
+		internal HttpContext	HttpContext			{ get; private set; }
 
 		#region For IConnection
 
-		public string					SessionID								{ get; private set; }
-		public string					ConnectionID							{ get; private set; }
-		public bool						Sending									{ get; set; }
+		public string			SessionID			{ get; private set; }
+		public string			ConnectionID		{ get; private set; }
+		public bool				Sending				{ get; set; }
 
 		#endregion
 
-		internal RootMessage			ResponseMessage							= null;
+		private TaskCompletionSource<RootMessage>	CompletionSource	= null;
 
-		internal LongPollingConnection(string sessionID, string connectionID, HttpContext httpContext, AsyncCallback asyncCallback, object asyncState)
+		internal LongPollingConnection(MessageHandler messageHandler, HttpContext httpContext, string sessionID)
 		{
+			ASSERT( messageHandler != null, "Missing parameter 'messageHandler'" );
 			ASSERT( httpContext != null, "Missing parameter 'httpContext'" );
 			ASSERT( !string.IsNullOrEmpty(sessionID), "Missing parameter 'sessionID'" );
-			//ASSERT( !string.IsNullOrEmpty(connectionID), "Missing parameter 'connectionID'" );		<= Can be null for logout messages
-			//ASSERT( asyncCallback != null, "Missing parameter 'asyncCallback'" );		<= Managed by the system
-			//ASSERT( asyncState != null, "Missing parameter 'asyncState'" );		<= Managed by the system
 
-			AsyncState = asyncState;
-
+			MessageHandler = messageHandler;
 			HttpContext = httpContext;
-			AsyncCallback = asyncCallback;
-
 			SessionID = sessionID;
-			ConnectionID = connectionID;
+			ConnectionID = null;  // NB: Set later
 			Sending = false;
+		}
+
+		internal async Task<RootMessage> ReceiveRequest(RootMessage requestMessage)
+		{
+			// Check message type
+			var connectionList = MessageHandler.ConnectionList;
+			string messageType = (string)requestMessage[ RootMessage.TypeKey ];
+			LOG( "ReceiveRequest() - Received message of type '" + messageType + "'" );
+			switch( messageType )
+			{
+				case RootMessage.TypeInit:
+				{
+					bool initAccepted = connectionList.CheckInitAccepted( requestMessage, HttpContext );
+					if(! initAccepted )
+					{
+						// Init refused => Send 'logout'
+						LOG( "ReceiveRequest() - Respond with 'logout' message" );
+						return RootMessage.CreateServer_Logout();
+					}
+
+					// Allocate a new ConnectionID and send it to the peer
+					ConnectionID = connectionList.AllocateNewConnectionID( SessionID );
+					LOG( "ReceiveRequest() - Respond with 'init' message" );
+					return RootMessage.CreateServer_Init( ConnectionID );
+				}
+
+				case RootMessage.TypePoll:
+				{
+					// Get ConnectionID
+					ConnectionID = requestMessage.TryGetString( RootMessage.KeySenderID );
+					if( string.IsNullOrEmpty(ConnectionID) )
+						throw new ApplicationException( "Missing sender ID in message" );
+
+					if(! connectionList.CheckConnectionIsValid(SessionID, ConnectionID) )
+					{
+						LOG( "ReceiveRequest() *** The SessionID/ConnectionID could not be found in the 'connectionList'. Sending Logout message" );
+						return RootMessage.CreateServer_Logout();
+					}
+
+					// Prepare the 'SendRootMessage()' method so it can be used by the ConnectionList
+					CompletionSource = new TaskCompletionSource<RootMessage>();
+
+					// Register this connection for to the ConnectionList
+					LOG( "ReceiveRequest() - Nothing to send right now - registering LongPollingConnection to ConnectionList" );
+					if(! connectionList.RegisterConnection(this, startStaleTimeout:true) )
+					{
+						FAIL( "The SessionID/ConnectionID could not be found in the 'connectionList'. Sending Logout message" );  // This check is already done above (only LOG()ged). This should really not happen often => FAIL()
+						return RootMessage.CreateServer_Logout();
+					}
+
+					// Wait for any messages to send to this connection
+					try
+					{
+						var response = await CompletionSource.Task;
+						ASSERT( Sending, "The ConnectionList did not set the 'Sending' property" );
+						return response;
+					}
+					finally
+					{
+						// Unregister this connection from the ConnectionList
+						try { connectionList.UnregisterConnection( this ); }
+						catch( System.Exception ex )  { FAIL( "ReceiveRequest() *** Exception (" + ex.GetType().FullName + ") while calling connectionList.UnregisterConnection()" ); }
+					}
+				}
+
+				case RootMessage.TypeMessages:
+				{
+					// Get ConnectionID
+					ConnectionID = requestMessage.TryGetString( RootMessage.KeySenderID );
+					if( string.IsNullOrEmpty(ConnectionID) )
+						throw new ApplicationException( "Missing ConnectionID in message" );
+
+					if(! connectionList.CheckConnectionIsValid(SessionID, ConnectionID) )
+					{
+						LOG( "ReceiveRequest() *** The SessionID/ConnectionID could not be found in the 'connectionList'. Sending Logout message" );
+						return RootMessage.CreateServer_Logout();
+					}
+
+					// Hold any messages that must be sent to this connection until all those messages are received
+					// so that reply messages are not sent one by one
+					LOG( "ReceiveRequest() - Hold connection '" + ConnectionID + "'" );
+					MessageHandler.HoldConnectionMessages( ConnectionID );
+					try
+					{
+						foreach( var messageItem in ((IEnumerable)requestMessage[ RootMessage.KeyMessageMessagesList ]).Cast<IDictionary<string,object>>() )
+						{
+							Message message = null;
+							try
+							{
+								var receivedMessage = Message.CreateReceivedMessage( ConnectionID, messageItem );
+								LOG( "ReceiveRequest() - Receiving message '" + receivedMessage + "'" );
+								MessageHandler.ReceiveMessage( receivedMessage );
+							}
+							catch( System.Exception ex )
+							{
+								LOG( "ReceiveRequest() *** Exception (" + ex.GetType().FullName + ") while receiving message" );
+
+								// Send exception through MessageHandler so that we can continue to parse the other messages
+								if( message == null )
+									MessageHandler.SendMessageToConnection( ConnectionID, Message.CreateExceptionMessage(exception:ex) );
+								else
+									MessageHandler.SendMessageToConnection( ConnectionID, Message.CreateExceptionMessage(exception:ex, sourceMessage:message) );
+							}
+						}
+					}
+					finally
+					{
+						LOG( "ReceiveRequest() - Remove the hold on connection '" + ConnectionID + "'" );
+						try { MessageHandler.UnholdConnectionMessages( ConnectionID ); }
+						catch( System.Exception ex )  { FAIL( "ReceiveRequest() *** Exception (" + ex.GetType().FullName + ") while calling MessageHandler.UnholdConnectionMessages('" + ConnectionID + "')" ); }
+					}
+
+					// NB: The first idea was to send pending messages (if there were any available) through the "messages" request instead of waiting for the "polling" request to send them.
+					// But since both requests could be sending concurrently, it would be hard for the client-side to receive all messages IN THE RIGHT ORDER
+					// => Always reply with an empty response message list ; Don't send the pending messages
+					return RootMessage.CreateServer_EmptyResponse();
+				}
+
+				default:
+					throw new NotImplementedException( "Unsupported root message type '" + messageType + "'" );
+			}
 		}
 
 		/// <remarks>
@@ -94,28 +205,10 @@ namespace CommonLibs.Web.LongPolling
 		public void SendRootMessage(RootMessage responseMessage)
 		{
 			ASSERT( responseMessage != null, "Missing parameter 'responseMessage'" );
+			ASSERT( CompletionSource != null, "'SendRootMessage()' invoked, but the 'CompletionSource' has not been set" );  // NB: Not a POLL request
+			ASSERT( CompletionSource.Task.IsCompleted == false, "'SendRootMessage()' invoked, but the connection has already been completed" );
 
-			LOG( "SendResponseMessage(" + responseMessage + ") - Start" );
-			try
-			{
-				ResponseMessage = responseMessage;
-
-				// Declare message as completed
-				int oldIsCompleted = Interlocked.Exchange( ref isCompleted, 1 );
-				if( oldIsCompleted != 0 )
-					throw new InvalidOperationException( GetType().FullName + "::" + System.Reflection.MethodInfo.GetCurrentMethod().Name + "() can only be called once" );
-
-				// Invoke callback that will invoke LongPollingHandler.EndProcessRequest()
-				LOG( "SendResponseMessage(" + responseMessage + ") - AsyncCallback is " + (AsyncCallback != null ? "not null" : "null") );
-				if( AsyncCallback != null )
-					AsyncCallback( this );
-
-				LOG( "SendResponseMessage(" + responseMessage + ") - Exit" );
-			}
-			catch( System.Exception ex )
-			{
-				LOG( "*** Error while terminating the HTTP request - Could not invoke the request's callback (" + ex.GetType().FullName + "): " + ex.Message );
-			}
+			CompletionSource.SetResult( responseMessage );
 		}
 
 		public void Close(RootMessage rootMessage)

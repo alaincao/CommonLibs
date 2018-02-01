@@ -4,7 +4,7 @@
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
 //
-// Copyright (c) 2010 - 2013 Alain CAO
+// Copyright (c) 2010 - 2018 Alain CAO
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -30,7 +30,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Web;
-using System.Web.UI;
 
 using CommonLibs.Utils;
 
@@ -44,7 +43,7 @@ namespace CommonLibs.Web.LongPolling
 		/// <param name="webSocketKeepaliveTimeoutMinutes">The delay between "pings" to 'webSocketKeepAliveUrl'</param>
 		/// <param name="syncedHandlerUrl">The URL to the Synced HTTP handler(used for e.g. file uploads)</param>
 		/// <param name="logoutUrl">The URL to redirect to when the server asks to logout</param>
-		public static IDictionary<string,object> CreateClientParameters(Func<string,string> resolveUrl, string httpHandlerUrl=null, string webSocketHandlerUrl=null, string webSocketKeepAliveUrl="~", int? webSocketKeepaliveTimeoutSeconds=null, string syncedHandlerUrl=null, string logoutUrl="~", bool? debug=false)
+		public static IDictionary<string,object> CreateClientParameters(Func<string,string> resolveUrl, string httpHandlerUrl=null, string webSocketHandlerUrl=null, string webSocketKeepAliveUrl="~/", int? webSocketKeepaliveTimeoutSeconds=null, string syncedHandlerUrl=null, string logoutUrl="~/", bool? debug=false)
 		{
 			var dict = new Dictionary<string,object>();
 			if( httpHandlerUrl != null )

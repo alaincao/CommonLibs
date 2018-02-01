@@ -5,10 +5,11 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
 using System.Web;
-using System.Web.WebSockets;
 
 using CommonLibs.Utils;
 using CommonLibs.Web.LongPolling.Utils;
+
+using HttpContext = Microsoft.AspNetCore.Http.HttpContext;
 
 namespace CommonLibs.Web.LongPolling
 {
@@ -18,11 +19,11 @@ namespace CommonLibs.Web.LongPolling
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		protected MessageHandler	MessageHandler		{ get { return WebSocketHandler.MessageHandler; } }
-		protected ConnectionList	ConnectionList		{ get { return WebSocketHandler.ConnectionList; } }
+		internal MessageHandler		MessageHandler		{ get; set; }
+		internal ConnectionList		ConnectionList		{ get { return MessageHandler.ConnectionList; } }
 		internal bool				Registered			{ get; private set; }
 
-		private WebSocketHandler	WebSocketHandler;
+		private HttpContext			HttpContext;
 		internal WebSocket			Socket;
 		private object				MessageContext;
 
@@ -34,39 +35,40 @@ namespace CommonLibs.Web.LongPolling
 
 		#endregion
 
-		internal WebSocketConnection(WebSocketHandler handler, AspNetWebSocketContext context, object messageContext)
+		internal WebSocketConnection(MessageHandler messageHandler, HttpContext httpContext, WebSocket webSocket, object messageContext)
 		{
-			ASSERT( handler != null, "Missing parameter 'handler'" );
-			ASSERT( context != null, "Missing parameter 'context'" );
+			ASSERT( messageHandler != null, "Missing parameter 'messageHandler'" );
+			ASSERT( httpContext != null, "Missing parameter 'context'" );
 
 			Registered = false;
 
-			SessionID = LongPolling.ConnectionList.GetSessionID( context );
+			SessionID = messageHandler.ConnectionList.GetSessionIDFromHttpContext( httpContext );
 			LOG( "WebSocketConnection "+SessionID+" - Constructor" );
 
 			Sending = false;
-			WebSocketHandler = handler;
-			Socket = context.WebSocket;
+			MessageHandler = messageHandler;
+			HttpContext = httpContext;
+			Socket = webSocket;
 			MessageContext = messageContext;
 		}
 
-		internal async Task ReceiveInitMessage()
+		internal async Task ReceiveInitMessage(int bufferSize, int initTimeoutSeconds)
 		{
 			ASSERT( Socket.State == System.Net.WebSockets.WebSocketState.Open, "'WebSocket' state is not 'Open'" );
 			LOG( "WebSocketConnection "+SessionID+" - ReceiveInitMessage" );
 
 			// Wait for the initial message from the peer
 			LOG( "WebSocketConnection "+SessionID+" - ReceiveInitMessage()" );
-			var initMessage = await ReceiveJSon( WebSocketHandler.InitTimeoutSeconds );
+			var initMessage = await ReceiveJSon( bufferSize:bufferSize, timeOutSeconds:initTimeoutSeconds );
 
 			var messageType = initMessage.TryGet( RootMessage.TypeKey ) as string;
 			if( messageType != RootMessage.TypeInit )
-				throw new WebSocketHandler.CloseConnectionException( "Invalid message type '"+(messageType??"<NULL>")+"'. Expected '"+RootMessage.TypeInit+"'" );
+				throw new WebSocketMiddleWare.CloseConnectionException( "Invalid message type '"+(messageType??"<NULL>")+"'. Expected '"+RootMessage.TypeInit+"'" );
 
 			// Validate the init message against the application
 			if( MessageHandler.RestoreMessageContextObject != null )
 				MessageHandler.RestoreMessageContextObject( MessageContext );  // NB: Not in the HttpContext anymore
-			bool initAccepted = ConnectionList.CheckInitAccepted( initMessage, SessionID );
+			bool initAccepted = ConnectionList.CheckInitAccepted( initMessage, HttpContext );
 			if(! initAccepted )
 			{
 				LOG( "WebSocketConnection "+SessionID+" - Init refused" );
@@ -77,7 +79,7 @@ namespace CommonLibs.Web.LongPolling
 				await SendJSon( logoutMessage );
 
 				// Close connection
-				throw new WebSocketHandler.CloseConnectionException();
+				throw new WebSocketMiddleWare.CloseConnectionException();
 			}
 
 			// Allocate a new ConnectionID
@@ -85,7 +87,7 @@ namespace CommonLibs.Web.LongPolling
 
 			// Assign this connection to this ConnectionID
 			if(! ConnectionList.RegisterConnection(this, startStaleTimeout:false) )
-				throw new WebSocketHandler.CloseConnectionException( "Could not register connection. Invalid SessionID/ConnectionID" );
+				throw new WebSocketMiddleWare.CloseConnectionException( "Could not register connection. Invalid SessionID/ConnectionID" );
 			Registered = true;
 
 			// Send the ConnectionID to the peer
@@ -95,11 +97,11 @@ namespace CommonLibs.Web.LongPolling
 			await SendJSon( responseMessage );
 		}
 
-		internal async Task MainLoop()
+		internal async Task MainLoop(int bufferSize)
 		{
 			while( Socket.State == System.Net.WebSockets.WebSocketState.Open )
 			{
-				var requestMessage = await ReceiveJSon();
+				var requestMessage = await ReceiveJSon( bufferSize:bufferSize );
 				if( requestMessage == null )
 					break;
 
@@ -166,13 +168,13 @@ namespace CommonLibs.Web.LongPolling
 			await socket.SendAsync( new ArraySegment<byte>(buffer), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None );
 		}
 
-		private async Task<IDictionary<string,object>> ReceiveJSon(int? timeOutSeconds=null)
+		private async Task<IDictionary<string,object>> ReceiveJSon(int bufferSize=WebSocketMiddleWare.DefaultBufferSize, int? timeOutSeconds=null)
 		{
-			var dict = await ReceiveJSon( Socket, timeOutSeconds );
+			var dict = await ReceiveJSon( Socket, bufferSize, timeOutSeconds );
 			return dict;
 		}
 
-		public static async Task<IDictionary<string,object>> ReceiveJSon(WebSocket socket, int? timeOutSeconds=null)
+		public static async Task<IDictionary<string,object>> ReceiveJSon(WebSocket socket, int bufferSize=WebSocketMiddleWare.DefaultBufferSize, int? timeOutSeconds=null)
 		{
 			CommonLibs.Utils.Debug.ASSERT( socket != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'socket'" );
 
@@ -186,7 +188,7 @@ namespace CommonLibs.Web.LongPolling
 
 			// Read from socket
 			var stream = new System.IO.MemoryStream();
-			var buffer = System.Net.WebSockets.WebSocket.CreateClientBuffer( WebSocketHandler.DefaultBufferSize, WebSocketHandler.DefaultBufferSize );
+			var buffer = System.Net.WebSockets.WebSocket.CreateClientBuffer( bufferSize, bufferSize );
 		RECEIVE_AGAIN:
 			var result = await socket.ReceiveAsync( buffer, cancellationToken  );
 			stream.Write( buffer.Array, 0, result.Count );

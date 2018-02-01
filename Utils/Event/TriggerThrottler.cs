@@ -4,7 +4,7 @@
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
 //
-// Copyright (c) 2010 - 2013 Alain CAO
+// Copyright (c) 2010 - 2018 Alain CAO
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -52,7 +52,7 @@ namespace CommonLibs.Utils.Event
 
 		public void Trigger()
 		{
-			Trigger( fromTimer:false );
+			var dummy = Trigger( fromTimer:false );
 		}
 
 		public async void TriggerAsync()
@@ -80,7 +80,7 @@ namespace CommonLibs.Utils.Event
 					{
 						// Previous invokation not yet terminated => Redelay this one
 						var timerMiliseconds = ((long)DelayTicks / TimeSpan.TicksPerMillisecond);
-						Timer = new System.Threading.Timer( (state)=>{ Trigger(fromTimer:true); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
+						Timer = new System.Threading.Timer( (state)=>{ var dummy = Trigger(fromTimer:true); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
 						goto DISCARD;
 					}
 
@@ -90,12 +90,11 @@ namespace CommonLibs.Utils.Event
 				}
 				else if( (now - LastTriggerTick) < DelayTicks )
 				{
-			START_TIMER:
 					// Delay not yet elapsed => Start the timer
 					var timerTicks = DelayTicks - (now - LastTriggerTick);
 					var timerMiliseconds = ( timerTicks / TimeSpan.TicksPerMillisecond );
 					CommonLibs.Utils.Debug.ASSERT( timerMiliseconds >= 0, this, "Logic error" );
-					Timer = new System.Threading.Timer( (state)=>{ Trigger(fromTimer:true); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
+					Timer = new System.Threading.Timer( (state)=>{ var dummy = Trigger(fromTimer:true); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
 					goto DISCARD;
 				}
 				else
@@ -110,7 +109,7 @@ namespace CommonLibs.Utils.Event
 					goto INVOKE_CALLBACK;
 				}
 
-				CommonLibs.Utils.Debug.ASSERT( false, this, "Unreachable code reached" );
+				//CommonLibs.Utils.Debug.ASSERT( false, this, "Unreachable code reached" );
 			}
 		DISCARD:
 			return;

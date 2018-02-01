@@ -12,7 +12,7 @@ namespace CommonLibs.Utils.Event
 		public bool							NoTrigger			{ get; set; }
 
 		private int?						Delay;
-		private System.Windows.Forms.Timer	Timer;
+		private System.Timers.Timer			Timer;
 
 		public void Init(Action action)
 		{
@@ -43,8 +43,8 @@ namespace CommonLibs.Utils.Event
 			if( Delay.HasValue )
 			{
 				var self = this;
-				Timer = new System.Windows.Forms.Timer{ Interval=Delay.Value };
-				Timer.Tick += (sender,e)=>
+				Timer = new System.Timers.Timer{ Interval=Delay.Value };
+				Timer.Elapsed += (sender,e)=>
 					{
 						self.Timer.Dispose();
 						self.Timer = null;
@@ -81,7 +81,7 @@ namespace CommonLibs.Utils.Event
 		public bool							NoTrigger			{ get; set; }
 
 		private int?						Delay;
-		private System.Windows.Forms.Timer	Timer;
+		private System.Timers.Timer			Timer;
 
 		public void Init(Action<T> action)
 		{
@@ -112,8 +112,8 @@ namespace CommonLibs.Utils.Event
 			if( Delay.HasValue )
 			{
 				var self = this;
-				Timer = new System.Windows.Forms.Timer{ Interval=Delay.Value };
-				Timer.Tick += (sender,e)=>
+				Timer = new System.Timers.Timer{ Interval=Delay.Value };
+				Timer.Elapsed += (sender,e)=>
 					{
 						self.Timer.Dispose();
 						self.Timer = null;

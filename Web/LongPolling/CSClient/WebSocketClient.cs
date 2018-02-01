@@ -12,6 +12,7 @@ namespace CommonLibs.Web.LongPolling.CSClient
 {
 	internal class WebSocketClient : BaseClient
 	{
+		private const int			InitTimeOutScnd	= 5;
 		public string				HandlerUrl		{ get; private set; }
 		private ClientWebSocket		WebSocket		= null;
 
@@ -37,7 +38,7 @@ namespace CommonLibs.Web.LongPolling.CSClient
 				await WebSocketConnection.SendJSon( socket, InitMessage );
 
 				LOG( "Receive init response" );
-				var response = await WebSocketConnection.ReceiveJSon( socket, WebSocketHandler.InitTimeoutSeconds );
+				var response = await WebSocketConnection.ReceiveJSon( socket, InitTimeOutScnd );
 				var rootMessageType = (string)response[RootMessage.TypeKey];
 				if( rootMessageType != RootMessage.TypeInit )
 					throw new ArgumentException( "The server returned an invalid message type. Expected 'init', received '"+response[RootMessage.TypeKey]+"'" );

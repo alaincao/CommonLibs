@@ -4,7 +4,7 @@
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
 //
-// Copyright (c) 2010 - 2013 Alain CAO
+// Copyright (c) 2010 - 2018 Alain CAO
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -34,6 +34,8 @@ using System.Web;
 
 using CommonLibs.Utils;
 using CommonLibs.Utils.Tasks;
+
+using HttpContext = Microsoft.AspNetCore.Http.HttpContext;
 
 namespace CommonLibs.Web.LongPolling
 {
@@ -104,9 +106,6 @@ namespace CommonLibs.Web.LongPolling
 			private Dictionary<string,object>		customObjects					= null;
 		}
 
-		public static string						AspSessionCookie				{ get { return ( aspSessionCookie ?? (aspSessionCookie = GetSessionCookieName()) ); } set { aspSessionCookie = value; } }
-		private static string						aspSessionCookie				= null;  // NB: Default: "ASP.NET_SessionId"
-
 		private object								LockObject						{ get { return AllConnections; } }
 
 		/// <summary>If a connection stays disconnected more than this amount of seconds, it is considered definitely disconnected</summary>
@@ -127,6 +126,11 @@ namespace CommonLibs.Web.LongPolling
 		private Dictionary<string,SessionEntry>		AllSessions						= new Dictionary<string,SessionEntry>();
 
 		/// <summary>
+		/// Return the session ID string for the request using the specified HttpContext
+		/// </summary>
+		public Func<HttpContext,string>				GetSessionIDFromHttpContext		{ get; private set; }
+
+		/// <summary>
 		/// Bind to this event to accept or reject incomming connections from clients<br/>
 		/// If there are callbacks assigned then they are called for each 'init' messages received.<br/>
 		/// If all the callbacks return false, then the connection will be refused to the client.<br/>
@@ -136,8 +140,8 @@ namespace CommonLibs.Web.LongPolling
 		/// Returns: true if the 'init' must be accepted.
 		/// </summary>
 		/// <remarks>Adding/removing callbacks to this event is NOT thread-safe and so should be done once at application initialization</remarks>
-		public event Func<IDictionary<string,object>,string,bool>	CheckInit			{ add { CheckInitCallbacks.Add(value); } remove { var rc=CheckInitCallbacks.Remove(value); ASSERT( rc, "Failed to remove CheckInit event's callback " + value ); } }
-		private List<Func<IDictionary<string,object>,string,bool>>	CheckInitCallbacks	= new List<Func<IDictionary<string,object>,string,bool>>();
+		public event Func<IDictionary<string,object>,HttpContext,bool>	CheckInit			{ add { CheckInitCallbacks.Add(value); } remove { var rc=CheckInitCallbacks.Remove(value); ASSERT( rc, "Failed to remove CheckInit event's callback " + value ); } }
+		private List<Func<IDictionary<string,object>,HttpContext,bool>>	CheckInitCallbacks	= new List<Func<IDictionary<string,object>,HttpContext,bool>>();
 
 		/// <summary>
 		/// Triggered when a session has been allocated (when a connection not yet associated to any session has been received)<br/>
@@ -178,45 +182,15 @@ namespace CommonLibs.Web.LongPolling
 
 		private Action<string,Exception>			FatalExceptionHandler;
 
-		public ConnectionList(CommonLibs.Utils.Tasks.TasksQueue tasksQueue)
+		public ConnectionList(CommonLibs.Utils.Tasks.TasksQueue tasksQueue, Func<HttpContext,string> getSessionIDFromHttpContext)
 		{
 			LOG( "Constructor" );
+			ASSERT( getSessionIDFromHttpContext != null, "Missing parameter 'getSessionIDFromHttpContext'" );
 
+			GetSessionIDFromHttpContext = getSessionIDFromHttpContext;
 			FatalExceptionHandler = DefaultFatalExceptionHandler;
 
 			TasksQueue = tasksQueue;
-		}
-
-		/// <see cref="https://stackoverflow.com/questions/3739537/how-to-programmatically-get-session-cookie-name"/>
-		public static string GetSessionCookieName()
-		{
-			var sessionStateSection = (System.Web.Configuration.SessionStateSection)System.Configuration.ConfigurationManager.GetSection("system.web/sessionState");
-			return sessionStateSection.CookieName;
-		}
-
-		public static string GetSessionID(HttpContext httpContext)
-		{
-			CommonLibs.Utils.Debug.ASSERT( httpContext != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing paramter 'httpContext'" );
-
-			var session = httpContext.Session;
-			if( session != null )
-			{
-				return session.SessionID;
-			}
-			else
-			{
-				var request = httpContext.Request;
-				CommonLibs.Utils.Debug.ASSERT( request != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Neither session or request are accessible" );
-				var sessionID = request.Cookies[ AspSessionCookie ];
-				return sessionID.Value;
-			}
-		}
-
-		public static string GetSessionID(System.Web.WebSockets.AspNetWebSocketContext socketContext)
-		{
-			CommonLibs.Utils.Debug.ASSERT( socketContext != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing paramter 'socketContext'" );
-			var sessionID = socketContext.Cookies[ AspSessionCookie ];
-			return sessionID.Value;
 		}
 
 		private void DefaultFatalExceptionHandler(string description, Exception exception)
@@ -513,14 +487,14 @@ namespace CommonLibs.Web.LongPolling
 		/// Called by the LongPollingHandler when it receives an 'init' message to check if this message must be accepted or not.
 		/// </summary>
 		/// <returns>True if the 'init' message must be accepted, false otherwise</returns>
-		internal bool CheckInitAccepted(IDictionary<string,object> requestMessage, string sessionID)
+		internal bool CheckInitAccepted(IDictionary<string,object> requestMessage, HttpContext httpContext)
 		{
 			// Trigger the CheckInit event to check if the 'init' must be accepted
 
 			bool initAccepted = true;  // Default to 'true' so that if there is no callback, it will always be accepted
 			foreach( var initCallback in CheckInitCallbacks )
 			{
-				initAccepted = initCallback( requestMessage, sessionID );
+				initAccepted = initCallback( requestMessage, httpContext );
 				if( initAccepted )
 					// This callback accepted the 'init'. Don't need to call the others.
 					break;
@@ -941,10 +915,10 @@ namespace CommonLibs.Web.LongPolling
 
 				if( connectionEntry.StaleTimeout == null )
 				{
-					#if( DEBUG )
-						if( connectionEntry.Connection is LongPollingConnection )
-							FAIL( "We are sending messages through the polling connection ; A StaleTimeout is supposed to be running here" );
-					#endif
+//#if( DEBUG )
+//	if( connectionEntry.Connection is LongPollingConnection )
+//		FAIL( "We are sending messages through the polling connection ; A StaleTimeout is supposed to be running here" );
+//#endif
 				}
 				else
 				{

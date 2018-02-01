@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Web;
 
+using CommonLibs.Web.LongPolling.Utils;
+
 namespace CommonLibs.Web.LongPolling
 {
 	public class RootMessage : Dictionary<string,object>
@@ -22,6 +24,11 @@ namespace CommonLibs.Web.LongPolling
 
 		private RootMessage() : base()  {}
 		private RootMessage(IDictionary<string,object> content) : base(content)  {}
+
+		internal static RootMessage CreateServer_RawRequest(string json)
+		{
+			return new RootMessage( json.FromJSONDictionary() );
+		}
 
 		internal static RootMessage CreateServer_Init(string connectionID)
 		{

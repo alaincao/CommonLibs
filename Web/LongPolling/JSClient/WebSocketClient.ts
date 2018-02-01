@@ -4,7 +4,7 @@
 // Author:
 //   Alain CAO (alain.cao@sigmaconso.com)
 //
-// Copyright (c) 2016 SigmaConso
+// Copyright (c) 2018 SigmaConso
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the

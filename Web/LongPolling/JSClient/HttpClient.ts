@@ -4,7 +4,7 @@
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
 //
-// Copyright (c) 2010 - 2016 Alain CAO
+// Copyright (c) 2010 - 2018 Alain CAO
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -235,7 +235,7 @@ export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl
 			sendRequestFunction();
 //		}
 
-		$(window).unload( function()
+		$(window).on( 'unload', function()
 			{
 				// When leaving the page, explicitly abort the polling requests because IE keeps them alive!!!
 				try { self.__pollingRequest.abort(); }
@@ -418,6 +418,7 @@ export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl
 							console.error( 'Error while invoking long_polling_client_error event', err );
 					}
 				} );
+			return $this;
 		};
 	$this.onMessageHandlerFailed = function(callback:(message:string)=>void)
 		{
@@ -432,6 +433,7 @@ export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl
 						$this.trigger( $this.internalErrorEvent, 'Error while invoking message_handler_failed event: '+err );
 					}
 				} );
+			return $this;
 		};
 
 	/////////////////////
