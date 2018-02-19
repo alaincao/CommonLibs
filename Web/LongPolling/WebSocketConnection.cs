@@ -35,24 +35,25 @@ namespace CommonLibs.Web.LongPolling
 
 		#endregion
 
-		internal WebSocketConnection(MessageHandler messageHandler, HttpContext httpContext, WebSocket webSocket, object messageContext)
+		internal WebSocketConnection(MessageHandler messageHandler, HttpContext httpContext, WebSocket webSocket, string sessionID, object messageContext)
 		{
 			ASSERT( messageHandler != null, "Missing parameter 'messageHandler'" );
 			ASSERT( httpContext != null, "Missing parameter 'context'" );
-
-			Registered = false;
-
-			SessionID = messageHandler.ConnectionList.GetSessionIDFromHttpContext( httpContext );
+			ASSERT( webSocket != null, "Missing parameter 'webSocket'" );
+			ASSERT( !string.IsNullOrEmpty(sessionID), "Missing parameter 'sessionID'" );
 			LOG( "WebSocketConnection "+SessionID+" - Constructor" );
 
-			Sending = false;
 			MessageHandler = messageHandler;
+			Registered = false;
 			HttpContext = httpContext;
 			Socket = webSocket;
 			MessageContext = messageContext;
+			SessionID = sessionID;
+			ConnectionID = null;  // NB: Set in'ReceiveInitMessage()' below
+			Sending = false;
 		}
 
-		internal async Task ReceiveInitMessage(int bufferSize, int initTimeoutSeconds)
+		internal async Task ReceiveInitMessage(HttpContext context, int bufferSize, int initTimeoutSeconds)
 		{
 			ASSERT( Socket.State == System.Net.WebSockets.WebSocketState.Open, "'WebSocket' state is not 'Open'" );
 			LOG( "WebSocketConnection "+SessionID+" - ReceiveInitMessage" );
@@ -83,7 +84,7 @@ namespace CommonLibs.Web.LongPolling
 			}
 
 			// Allocate a new ConnectionID
-			ConnectionID = ConnectionList.AllocateNewConnectionID( SessionID );
+			ConnectionID = ConnectionList.AllocateNewConnectionID( context, SessionID );
 
 			// Assign this connection to this ConnectionID
 			if(! ConnectionList.RegisterConnection(this, startStaleTimeout:false) )

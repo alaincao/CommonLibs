@@ -1,5 +1,5 @@
 //
-// CommonLibs/Web/LongPolling/JSClient/WebSocketClient.ts
+// CommonLibs/Web/LongPolling/WebSocketMiddleWare.cs
 //
 // Author:
 //   Alain CAO (alain.cao@sigmaconso.com)
@@ -31,6 +31,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CommonLibs.Web.LongPolling
 {
@@ -45,7 +46,7 @@ namespace CommonLibs.Web.LongPolling
 			internal CloseConnectionException(string message)	: base(message)	{ IsError = true; }
 		}
 
-		public static IApplicationBuilder UseMessageHandlerWebSocket(this IApplicationBuilder app, MessageHandler messageHandler, string route, int bufferSize=DefaultBufferSize, int initTimeoutSeconds=5)
+		public static IApplicationBuilder UseMessageHandlerWebSocket(this IApplicationBuilder app, string route, int bufferSize=DefaultBufferSize, int initTimeoutSeconds=5)
 		{
 			app.Use( async (context, next) =>
 				{
@@ -54,6 +55,7 @@ namespace CommonLibs.Web.LongPolling
 					if(! context.WebSockets.IsWebSocketRequest )
 						goto NEXT;
 
+					var messageHandler = context.RequestServices.GetRequiredService<MessageHandler>();
 					await ProcessWebSocketRequest( messageHandler, context, bufferSize:bufferSize, initTimeoutSeconds:initTimeoutSeconds );
 
 					return;
@@ -70,12 +72,15 @@ namespace CommonLibs.Web.LongPolling
 				messageContext = messageHandler.SaveMessageContextObject();
 
 			var webSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
+			var sessionID = messageHandler.ConnectionList.GetSessionIDFromHttpContext( httpContext );
+			if( string.IsNullOrEmpty(sessionID) )
+				throw new ArgumentException( "No SessionID available for this connection" );
 
-			var conn = new WebSocketConnection( messageHandler, httpContext, webSocket, messageContext );
+			var conn = new WebSocketConnection( messageHandler, httpContext, webSocket, sessionID, messageContext );
 			System.Exception exception = null;
 			try
 			{
-				await conn.ReceiveInitMessage( bufferSize:bufferSize, initTimeoutSeconds:initTimeoutSeconds );
+				await conn.ReceiveInitMessage( httpContext, bufferSize:bufferSize, initTimeoutSeconds:initTimeoutSeconds );
 				await conn.MainLoop( bufferSize:bufferSize );
 			}
 			catch( CloseConnectionException ex )

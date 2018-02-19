@@ -151,10 +151,10 @@ namespace CommonLibs.Web.LongPolling
 			ConnectionList = connectionList;
 			FatalExceptionHandler = DefaultFatalExceptionHandler;
 
-			ConnectionList.ConnectionRegistered += (value)=>
+			ConnectionList.ConnectionRegistered.Add( (value)=>
 				{
 					CheckPendingQueueForConnection( value );
-				};
+				} );
 			ConnectionList.ConnectionLost += ConnectionList_ConnectionLost;
 
 			// Default behaviour for message handler's exceptions: Send an exception message to the sender

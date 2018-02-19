@@ -1,5 +1,5 @@
 ﻿//
-// CommonLibs/Web/LongPolling/LongPollingConnection.cs
+// CommonLibs/Web/LongPolling/HttpConnection.cs
 //
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
@@ -41,7 +41,7 @@ using CommonLibs.Web.LongPolling.Utils;
 
 namespace CommonLibs.Web.LongPolling
 {
-	internal class LongPollingConnection : IConnection
+	internal class HttpConnection : IConnection
 	{
 		[System.Diagnostics.Conditional("DEBUG")] private void LOG(string message)					{ CommonLibs.Utils.Debug.LOG( this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
@@ -60,7 +60,7 @@ namespace CommonLibs.Web.LongPolling
 
 		private TaskCompletionSource<RootMessage>	CompletionSource	= null;
 
-		internal LongPollingConnection(MessageHandler messageHandler, HttpContext httpContext, string sessionID)
+		internal HttpConnection(MessageHandler messageHandler, HttpContext httpContext, string sessionID)
 		{
 			ASSERT( messageHandler != null, "Missing parameter 'messageHandler'" );
 			ASSERT( httpContext != null, "Missing parameter 'httpContext'" );
@@ -73,7 +73,7 @@ namespace CommonLibs.Web.LongPolling
 			Sending = false;
 		}
 
-		internal async Task<RootMessage> ReceiveRequest(RootMessage requestMessage)
+		internal async Task<RootMessage> ReceiveRequest(HttpContext context, RootMessage requestMessage)
 		{
 			// Check message type
 			var connectionList = MessageHandler.ConnectionList;
@@ -92,7 +92,7 @@ namespace CommonLibs.Web.LongPolling
 					}
 
 					// Allocate a new ConnectionID and send it to the peer
-					ConnectionID = connectionList.AllocateNewConnectionID( SessionID );
+					ConnectionID = connectionList.AllocateNewConnectionID( context, SessionID );
 					LOG( "ReceiveRequest() - Respond with 'init' message" );
 					return RootMessage.CreateServer_Init( ConnectionID );
 				}
@@ -114,7 +114,7 @@ namespace CommonLibs.Web.LongPolling
 					CompletionSource = new TaskCompletionSource<RootMessage>();
 
 					// Register this connection for to the ConnectionList
-					LOG( "ReceiveRequest() - Nothing to send right now - registering LongPollingConnection to ConnectionList" );
+					LOG( "ReceiveRequest() - Nothing to send right now - registering HttpConnection to ConnectionList" );
 					if(! connectionList.RegisterConnection(this, startStaleTimeout:true) )
 					{
 						FAIL( "The SessionID/ConnectionID could not be found in the 'connectionList'. Sending Logout message" );  // This check is already done above (only LOG()ged). This should really not happen often => FAIL()

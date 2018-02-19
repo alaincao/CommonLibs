@@ -144,4 +144,60 @@ namespace CommonLibs.Utils.Event
 			}
 		}
 	}
+
+	/// <summary>
+	/// Thread-safe, exception-safe list of callbacks
+	/// </summary>
+	public class CallbackList<T,U>
+	{
+		[System.Diagnostics.Conditional("DEBUG")] private void LOG(string message)					{ CommonLibs.Utils.Debug.LOG( this, message ); }
+		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
+		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
+
+		private List<Action<T,U>>				List							= new List<Action<T,U>>();
+		public int								Count							{ get { lock(List){ return List.Count; } } }
+
+		public void Add(Action<T,U> callback)
+		{
+			lock( List )
+			{
+				List.Add( callback );
+			}
+		}
+
+		public void Remove(Action<T,U> callback)
+		{
+			bool rc;
+			lock( List )
+			{
+				rc = List.Remove( callback );
+			}
+			ASSERT( rc, "Failed to remove specified callback " + callback );
+		}
+
+		public void Clear()
+		{
+			lock( List )
+			{
+				List.Clear();
+			}
+		}
+
+		public void Invoke(T value1, U value2)
+		{
+			Action<T,U>[] callbacks;
+			lock( List )
+			{
+				if( List.Count == 0 )
+					return;
+				callbacks = List.ToArray();
+			}
+
+			foreach( var callback in callbacks )
+			{
+				try { callback(value1, value2); }
+				catch( System.Exception ex ) { FAIL( "Callback invocation threw an exception(" + ex.GetType().FullName + "): "+ ex.Message ); }
+			}
+		}
+	}
 }

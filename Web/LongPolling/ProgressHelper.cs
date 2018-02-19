@@ -31,6 +31,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Web;
 
+using Microsoft.AspNetCore.Http;
+
 using CommonLibs.Web.LongPolling;
 using CommonLibs.Web.LongPolling.Utils;
 
@@ -59,7 +61,7 @@ namespace CommonLibs.Web.LongPolling
 		private string						ConnectionID;
 		private string						SessionID;
 
-		private Action<string>				ConnectionAllocatedCallback			= null;
+		private Action<string,HttpContext>	ConnectionAllocatedCallback			= null;
 		private Message						LastMessageSent						= null;
 		/// <summary>When this instance is bound to a session, leave this property to 'true' to resend the last message if a new connection arrives in the this session</summary>
 		public bool							ResendLastMessageToNewConnections	= true;
@@ -117,8 +119,8 @@ namespace CommonLibs.Web.LongPolling
 				ASSERT( rc.GetHashCode() == this.GetHashCode(), "'ConnectionList.GetSessionCustomObject()' is supposed to return 'this'" );
 
 				// Watch any new connection arriving to the LongPolling's ConnectionList
-				ConnectionAllocatedCallback = new Action<string>( ConnectionList_ConnectionAllocated );
-				ConnectionList.ConnectionAllocated += ConnectionAllocatedCallback;
+				ConnectionAllocatedCallback = new Action<string,HttpContext>( ConnectionList_ConnectionAllocated );
+				ConnectionList.ConnectionAllocated.Add( ConnectionAllocatedCallback );
 			}
 		}
 
@@ -148,7 +150,7 @@ namespace CommonLibs.Web.LongPolling
 						// Stop watching for new connections
 						ASSERT( ConnectionAllocatedCallback != null, "Property 'ConnectionAllocatedCallback' is supposed to be set here" );
 						if( ConnectionAllocatedCallback != null )
-							ConnectionList.ConnectionAllocated -= ConnectionAllocatedCallback;
+							ConnectionList.ConnectionAllocated.Remove( ConnectionAllocatedCallback );
 					}
 					catch( System.Exception ex )
 					{
@@ -218,7 +220,7 @@ namespace CommonLibs.Web.LongPolling
 		}
 
 		/// <remarks>This callback is only bound when 'SendToSessionID == true'</remarks>
-		private void ConnectionList_ConnectionAllocated(string connectionID)
+		private void ConnectionList_ConnectionAllocated(string connectionID, HttpContext context)
 		{
 			ASSERT( BoundToSession, "The method 'ConnectionList_ConnectionAllocated' is not supposed to be called when 'BoundToSession' is false" );
 			ASSERT( SessionID != null, "Property 'SessionID' is supposed to be set here" );

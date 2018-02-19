@@ -1,5 +1,5 @@
 //
-// CommonLibs/Web/LongPolling/JSClient/WebSocketClient.ts
+// CommonLibs/Web/LongPolling/HttpMiddleWare.cs
 //
 // Author:
 //   Alain CAO (alain.cao@sigmaconso.com)
@@ -35,6 +35,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 
 using CommonLibs.Web.LongPolling.Utils;
 
@@ -46,7 +47,7 @@ namespace CommonLibs.Web.LongPolling
 		[System.Diagnostics.Conditional("DEBUG")] private static void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, typeof(HttpMiddleWare), message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private static void FAIL(string message)				{ CommonLibs.Utils.Debug.ASSERT( false, typeof(HttpMiddleWare), message ); }
 
-		public static IApplicationBuilder UseMessageHandlerHttp(this IApplicationBuilder app, MessageHandler messageHandler, string route)
+		public static IApplicationBuilder UseMessageHandlerHttp(this IApplicationBuilder app, string route)
 		{
 			app.Use( async (context, next) =>
 				{
@@ -55,6 +56,7 @@ namespace CommonLibs.Web.LongPolling
 					if( context.Request.Method != "POST" )
 						goto NEXT;
 
+					var messageHandler = context.RequestServices.GetRequiredService<MessageHandler>();
 					await ProcessRequest( messageHandler, context );
 
 					return;
@@ -68,7 +70,7 @@ namespace CommonLibs.Web.LongPolling
 		{
 			var connectionList = messageHandler.ConnectionList;
 			var sessionID = connectionList.GetSessionIDFromHttpContext( context );
-			var connection = new LongPollingConnection( messageHandler, context, sessionID );
+			var connection = new HttpConnection( messageHandler, context, sessionID );
 			RootMessage response;
 			try
 			{
@@ -77,7 +79,7 @@ namespace CommonLibs.Web.LongPolling
 					var json = new StreamReader( context.Request.Body ).ReadToEnd();
 					request = RootMessage.CreateServer_RawRequest( json );
 				}
-				response = await connection.ReceiveRequest( request );
+				response = await connection.ReceiveRequest( context, request );
 			}
 			catch( System.Exception ex )
 			{

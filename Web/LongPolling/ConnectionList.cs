@@ -33,6 +33,7 @@ using System.Linq;
 using System.Web;
 
 using CommonLibs.Utils;
+using CommonLibs.Utils.Event;
 using CommonLibs.Utils.Tasks;
 
 using HttpContext = Microsoft.AspNetCore.Http.HttpContext;
@@ -147,30 +148,26 @@ namespace CommonLibs.Web.LongPolling
 		/// Triggered when a session has been allocated (when a connection not yet associated to any session has been received)<br/>
 		/// Parameter 1: The SessionID that just got allocated.
 		/// </summary>
-		public event Action<string>					SessionAllocated				{ add { SessionAllocatedAddCallback(value); } remove { SessionAllocatedRemoveCallback(value); } }
-		private List<Action<string>>				SessionAllocatedCallbacks		= new List<Action<string>>();
+		public readonly CallbackList<string,HttpContext>	SessionAllocated		= new CallbackList<string,HttpContext>();
 
 		/// <summary>
 		/// Triggered when an ASP session and all its associated connections were discarded<br/>
 		/// Parameter 1: The SessionID that just got discarded.
 		/// </summary>
-		public event Action<string>					SessionClosed					{ add { SessionClosedAddCallback(value); } remove { SessionClosedRemoveCallback(value); } }
-		private List<Action<string>>				SessionClosedCallbacks			= new List<Action<string>>();
+		public readonly CallbackList<string>		SessionClosed					= new CallbackList<string>();
 
 		/// <summary>
 		/// Triggered when a new ConnectionID has been allocated by this ConnectionList.<br/>
 		/// Parameter 1: The ConnectionID that just registered.
 		/// </summary>
-		public event Action<string>					ConnectionAllocated				{ add { ConnectionAllocatedAddCallback(value); } remove { ConnectionAllocatedRemoveCallback(value); } }
-		private List<Action<string>>				ConnectionAllocatedCallbacks	= new List<Action<string>>();
+		public readonly CallbackList<string,HttpContext>	ConnectionAllocated		= new CallbackList<string,HttpContext>();
 
 		/// <summary>
 		/// Triggered when a long polling request has just connected to the server.<br:>
 		/// Parameter 1: The ConnectionID that just connected.
 		/// </summary>
 		/// <remarks>Be aware that due to multithreading, the connection is not guaranteed to be available at the time of the event processing</remarks>
-		public event Action<string>					ConnectionRegistered			{ add { ConnectionRegisteredAddCallback(value); } remove { ConnectionRegisteredRemoveCallback(value); } }
-		private List<Action<string>>				ConnectionRegisteredCallbacks	= new List<Action<string>>();
+		public readonly CallbackList<string>		ConnectionRegistered			= new CallbackList<string>();
 
 		/// <summary>
 		/// Triggered when a ConnectionID is considered lost by this ConnectionList.<br/>
@@ -199,155 +196,6 @@ namespace CommonLibs.Web.LongPolling
 			string message = "" + description + ":" + exception;
 			FAIL( message );
 			LOG( message );
-		}
-
-		private void SessionAllocatedAddCallback(Action<string> callback)
-		{
-			lock( SessionAllocatedCallbacks )
-			{
-				SessionAllocatedCallbacks.Add( callback );
-			}
-		}
-
-		private void SessionAllocatedRemoveCallback(Action<string> callback)
-		{
-			bool rc;
-			lock( SessionAllocatedCallbacks )
-			{
-				rc = SessionAllocatedCallbacks.Remove( callback );
-			}
-			ASSERT( rc, "Failed to remove SessionAllocated event's callback " + callback );
-		}
-
-		private void SessionAllocatedInvokeCallbacks(string sessionID)
-		{
-			LOG( "SessionAllocatedInvokeCallbacks(" + sessionID + ") - Start" );
-			Action<string>[] callbacks;
-			lock( SessionAllocatedCallbacks )
-			{
-				LOG( "SessionAllocatedInvokeCallbacks(" + sessionID + ") - Lock acquired" );
-				callbacks = SessionAllocatedCallbacks.ToArray();
-			}
-			LOG( "SessionAllocatedInvokeCallbacks(" + sessionID + ") - Calling " + SessionAllocatedCallbacks.Count + " callbacks" );
-			foreach( var callback in callbacks )
-			{
-				try { callback( sessionID ); }
-				catch( System.Exception ex ) { FatalExceptionHandler( "SessionAllocatedCallbacks callback threw an exception", ex ); }
-			}
-
-			LOG( "SessionAllocatedInvokeCallbacks(" + sessionID + ") - Exit" );
-		}
-
-		private void SessionClosedAddCallback(Action<string> callback)
-		{
-			lock( SessionClosedCallbacks )
-			{
-				SessionClosedCallbacks.Add( callback );
-			}
-		}
-
-		private void SessionClosedRemoveCallback(Action<string> callback)
-		{
-			bool rc;
-			lock( SessionClosedCallbacks )
-			{
-				rc = SessionClosedCallbacks.Remove( callback );
-			}
-			ASSERT( rc, "Failed to remove SessionClosed event's callback " + callback );
-		}
-
-		private void SessionClosedInvokeCallbacks(string sessionID)
-		{
-			LOG( "SessionClosedInvokeCallbacks(" + sessionID + ") - Start" );
-			Action<string>[] callbacks;
-			lock( SessionClosedCallbacks )
-			{
-				LOG( "SessionClosedInvokeCallbacks(" + sessionID + ") - Lock acquired" );
-				callbacks = SessionClosedCallbacks.ToArray();
-			}
-			LOG( "SessionClosedInvokeCallbacks(" + sessionID + ") - Calling " + SessionClosedCallbacks.Count + " callbacks" );
-			foreach( var callback in callbacks )
-			{
-				try { callback( sessionID ); }
-				catch( System.Exception ex ) { FatalExceptionHandler( "SessionClosedCallbacks callback threw an exception", ex ); }
-			}
-
-			LOG( "SessionClosedInvokeCallbacks(" + sessionID + ") - Exit" );
-		}
-
-		private void ConnectionAllocatedAddCallback(Action<string> callback)
-		{
-			lock( ConnectionAllocatedCallbacks )
-			{
-				ConnectionAllocatedCallbacks.Add( callback );
-			}
-		}
-
-		private void ConnectionAllocatedRemoveCallback(Action<string> callback)
-		{
-			bool rc;
-			lock( ConnectionAllocatedCallbacks )
-			{
-				rc = ConnectionAllocatedCallbacks.Remove( callback );
-			}
-			ASSERT( rc, "Failed to remove ConnectionAllocated event's callback " + callback );
-		}
-
-		private void ConnectionAllocatedInvokeCallbacks(string connectionID)
-		{
-			LOG( "ConnectionAllocatedInvokeCallbacks(" + connectionID + ") - Start" );
-			Action<string>[] callbacks;
-			lock( ConnectionAllocatedCallbacks )
-			{
-				LOG( "ConnectionAllocatedInvokeCallbacks(" + connectionID + ") - Lock acquired" );
-
-				callbacks = ConnectionAllocatedCallbacks.ToArray();
-			}
-			LOG( "ConnectionAllocatedInvokeCallbacks(" + connectionID + ") - Calling " + ConnectionAllocatedCallbacks.Count + " callbacks" );
-			foreach( var callback in callbacks )
-			{
-				try { callback( connectionID ); }
-				catch( System.Exception ex ) { FatalExceptionHandler( "ConnectionAllocated callback threw an exception", ex ); }
-			}
-
-			LOG( "ConnectionAllocatedInvokeCallbacks(" + connectionID + ") - Exit" );
-		}
-
-		private void ConnectionRegisteredAddCallback(Action<string> callback)
-		{
-			lock( ConnectionRegisteredCallbacks )
-			{
-				ConnectionRegisteredCallbacks.Add( callback );
-			}
-		}
-
-		private void ConnectionRegisteredRemoveCallback(Action<string> callback)
-		{
-			bool rc;
-			lock( ConnectionRegisteredCallbacks )
-			{
-				rc = ConnectionRegisteredCallbacks.Remove( callback );
-			}
-			ASSERT( rc, "Failed to remove ConnectionRegistered event's callback " + callback );
-		}
-
-		private void ConnectionRegisteredInvokeCallbacks(string connectionID)
-		{
-			LOG( "ConnectionRegisteredInvokeCallbacks(" + connectionID + ") - Start" );
-			Action<string>[] callbacks;
-			lock( ConnectionRegisteredCallbacks )
-			{
-				LOG( "ConnectionRegisteredInvokeCallbacks(" + connectionID + ") - Lock acquired " );
-				callbacks = ConnectionRegisteredCallbacks.ToArray();
-			}
-			LOG( "ConnectionRegisteredInvokeCallbacks(" + connectionID + ") - Calling " + ConnectionRegisteredCallbacks.Count + " callbacks" );
-			foreach( var callback in callbacks )
-			{
-				try { callback( connectionID ); }
-				catch( System.Exception ex ) { FatalExceptionHandler( "ConnectionRegistered callback threw an exception", ex ); }
-			}
-
-			LOG( "ConnectionRegisteredInvokeCallbacks(" + connectionID + ") - Exit" );
 		}
 
 		private void ConnectionLostAddCallback(Action<string> callback)
@@ -464,7 +312,7 @@ namespace CommonLibs.Web.LongPolling
 				finalizeAction();
 
 			// Fire SessionClosed event
-			SessionClosedInvokeCallbacks( sessionID );
+			SessionClosed.Invoke( sessionID );
 
 			// Dispose CustomObjects that are IDisposable
 			if( customObjects != null )
@@ -504,7 +352,7 @@ namespace CommonLibs.Web.LongPolling
 
 		/// <param name="sessionID">The session this new ConnectionID will belong to</param>
 		/// <returns>The new ConnectionID allocated</returns>
-		public string AllocateNewConnectionID(string sessionID)
+		public string AllocateNewConnectionID(HttpContext context, string sessionID)
 		{
 			ASSERT( !string.IsNullOrEmpty(sessionID), "Missing parameter 'sessionID'" );
 			LOG( "AllocateNewConnectionID(" + sessionID + ") - Start" );
@@ -540,8 +388,8 @@ namespace CommonLibs.Web.LongPolling
 			}//lock( LockObject )
 
 			if( sessionAllocated )
-				SessionAllocatedInvokeCallbacks( sessionID );
-			ConnectionAllocatedInvokeCallbacks( connectionID );
+				SessionAllocated.Invoke( sessionID, context );
+			ConnectionAllocated.Invoke( connectionID, context );
 
 			LOG( "AllocateNewConnectionID(" + sessionID + ") - EXIT" );
 			return connectionID;
@@ -626,7 +474,7 @@ namespace CommonLibs.Web.LongPolling
 				finalizeAction();
 
 			// Fire all ConnectionRegistered events
-			ConnectionRegisteredInvokeCallbacks( connectionID );
+			ConnectionRegistered.Invoke( connectionID );
 
 			LOG( "RegisterConnection(" + connectionID + ") - Exit" );
 			return true;
