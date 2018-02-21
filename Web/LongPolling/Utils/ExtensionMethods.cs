@@ -158,6 +158,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 		}
 
 		public static List<Newtonsoft.Json.JsonConverter>		ToJSONConverters			= null;
+		public static bool										ToJSONFirstLetterLowerCased	= false;
 		public static List<Newtonsoft.Json.JsonConverter>		FromJSONConverters			= new List<Newtonsoft.Json.JsonConverter>{
 																									new JsonDictionaryConverter(),  // Serialize JSON dictionaries to 'IDictionary<string,object>' instead of Newtonsoft's 'JObject'
 																								};
@@ -172,11 +173,13 @@ namespace CommonLibs.Web.LongPolling.Utils
 					converters = converters.Concat( ToJSONConverters );
 			}
 
-			var formatting = indented ? Newtonsoft.Json.Formatting.Indented : Newtonsoft.Json.Formatting.None;
-			if( converters == null )
-				return Newtonsoft.Json.JsonConvert.SerializeObject( obj, formatting );
-			else
-				return Newtonsoft.Json.JsonConvert.SerializeObject( obj, formatting, converters.ToArray() );
+			var settings = new Newtonsoft.Json.JsonSerializerSettings();
+			settings.Formatting = indented ? Newtonsoft.Json.Formatting.Indented : Newtonsoft.Json.Formatting.None;
+			if( converters != null )
+				settings.Converters = converters.ToList();
+			if( ToJSONFirstLetterLowerCased )
+				settings.ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver();
+			return Newtonsoft.Json.JsonConvert.SerializeObject( obj, settings );
 		}
 
 		public static IDictionary<string,object> FromJSONDictionary(this string str, IEnumerable<Newtonsoft.Json.JsonConverter> converters=null)
