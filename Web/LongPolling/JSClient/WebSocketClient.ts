@@ -379,17 +379,17 @@ export class WebSocketClient implements MessageHandler
 				var items = self.pendingMessages;
 				self.pendingMessages = [];
 
-				for( var i=0; i<items.length; ++i )
+				for( let i=0; i<items.length; ++i )
 				{
 					try
 					{
-						var message		= items[i].message;
-						var callback	= items[i].callback;
+						const message	= items[i].message;
+						const callback	= items[i].callback;
 
 						if( callback != null )
 						{
 							// Attach the callback to a new one-shot message handler
-							var replyMessageHandler = 'message_handler_autoreply_' + (++ self.sendMessageUid);
+							const replyMessageHandler = 'message_handler_autoreply_' + (++ self.sendMessageUid);
 							message[ 'reply_to_type' ] = replyMessageHandler;
 
 							self.bind( replyMessageHandler, function(evt, message)
@@ -402,13 +402,13 @@ export class WebSocketClient implements MessageHandler
 								} );
 						}
 
-						var rootMessage = {	'type'		: 'messages',
-											'messages'	: [ message ] };
+						const rootMessage = {	'type'		: 'messages',
+												'messages'	: [ message ] };
 
 						if( self.debug )
 							console.log( 'message send', message );
 
-						var strMessage = JSON.stringify( rootMessage );
+						const strMessage = JSON.stringify( rootMessage );
 						self.webSocket.send( strMessage );
 					}
 					catch( err )
