@@ -70,8 +70,16 @@ namespace CommonLibs.Web.LongPolling
 		{
 			var connectionList = messageHandler.ConnectionList;
 			var sessionID = connectionList.GetSessionIDFromHttpContext( context );
-			var connection = new HttpConnection( messageHandler, context, sessionID );
+
 			RootMessage response;
+			if( string.IsNullOrEmpty(sessionID) )
+			{
+				// No SessionID available for this connection
+				response = RootMessage.CreateServer_Logout();
+				goto EXIT;
+			}
+
+			var connection = new HttpConnection( messageHandler, context, sessionID );
 			try
 			{
 				RootMessage request;
@@ -85,6 +93,7 @@ namespace CommonLibs.Web.LongPolling
 			{
 				response = RootMessage.CreateServer_Exception( ex );
 			}
+		EXIT:
 			await context.Response.WriteAsync( response.ToJSON() );
 		}
 	}
