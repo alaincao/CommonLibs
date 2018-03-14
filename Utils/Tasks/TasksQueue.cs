@@ -54,7 +54,7 @@ namespace CommonLibs.Utils.Tasks
 		/// <summary>If this property is set to true, the CultureInfo of the thread that calls CreateTask() is copied to all created Threads</summary>
 		public bool										TransferCultureInfo			= true;
 
-		private DateTime								Now							{ get { return DateTime.UtcNow; } }
+		internal static DateTime						Now							{ get { return DateTime.UtcNow; } }
 
 		internal object									LockObject;
 

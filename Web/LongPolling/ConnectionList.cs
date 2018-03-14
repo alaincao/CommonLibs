@@ -100,11 +100,35 @@ namespace CommonLibs.Web.LongPolling
 			}
 		}
 
+		/// <remarks>Must be accessed within lock(ConnectionList.LockObject)</remarks>
 		private class SessionEntry
 		{
-			internal List<string>					ConnectionIDs					= new List<string>();
-			internal Dictionary<string,object>		CustomObjects					{ get { return customObjects ?? (customObjects = new Dictionary<string,object>()); } }
-			private Dictionary<string,object>		customObjects					= null;
+			internal static DateTime				Now					{ get { return TasksQueue.Now; } }
+
+			internal IReadOnlyList<string>			ConnectionIDs		{ get { return connectionIDs; } }
+			private readonly List<string>			connectionIDs		= new List<string>();
+			internal Dictionary<string,object>		CustomObjects		{ get { return customObjects ?? (customObjects = new Dictionary<string,object>()); } }
+			private Dictionary<string,object>		customObjects		= null;
+			internal DateTime						LastActive			{ get { return connectionIDs.Count > 0 ? /*This session is still active*/Now : lastActive; } }
+			private DateTime						lastActive			= Now;
+
+			internal void AddConnectionID(string connectionID)
+			{
+				connectionIDs.Add( connectionID );
+			}
+			internal bool RemoveConnectionID(string connectionID)
+			{
+				var rc = connectionIDs.Remove( connectionID );
+				lastActive = Now;
+				return rc;
+			}
+			internal bool IsStillActive(DateTime limit)
+			{
+				if( connectionIDs.Count > 0 )
+					// There are still active connections for this session
+					return true;
+				return lastActive > limit;
+			}
 		}
 
 		private object								LockObject						{ get { return AllConnections; } }
@@ -331,6 +355,43 @@ namespace CommonLibs.Web.LongPolling
 			LOG( "SessionEnded(" + sessionID + ") - Exit" );
 		}
 
+		public void StartAutomaticSessionCleanup(TimeSpan checksInterval, TimeSpan inactiveTimeout)
+		{
+			// Start interval task
+			SessionCleanup_Interval( checksInterval, inactiveTimeout );
+		}
+
+		private void SessionCleanup_Interval(TimeSpan checksInterval, TimeSpan inactiveTimeout)
+		{
+			LOG( "SessionCleanup_Interval() - Start" );
+			ASSERT( checksInterval > TimeSpan.MinValue, "Invalid parameter 'checksInterval'" );
+			ASSERT( inactiveTimeout > TimeSpan.MinValue, "Invalid parameter 'inactiveTimeout'" );
+
+			try
+			{
+				string[] inactiveSessions;
+				lock( LockObject )
+				{
+					LOG( "SessionCleanup_Interval() - Lock acquired" );
+					var limitDate = SessionEntry.Now - inactiveTimeout;
+					inactiveSessions = AllSessions.Where( v=> ! v.Value.IsStillActive(limitDate) ).Select(v=>v.Key).ToArray();
+				}
+
+				LOG( $"SessionCleanup_Interval() - Ending {inactiveSessions.Length} sessions" );
+				foreach( var sessionID in inactiveSessions )
+					SessionEnded( sessionID );
+			}
+			catch( System.Exception ex )
+			{
+				// Should really not happen but required to ensure the interval is always relaunched
+				FAIL( $"SessionCleanup_Interval threw an exception ({ex.GetType().FullName}): {ex.Message}" );
+			}
+
+			// Relaunch myself in 'checksInterval'
+			TasksQueue.CreateTask( checksInterval, (entry)=>SessionCleanup_Interval(checksInterval, inactiveTimeout) );
+			LOG( "SessionCleanup_Interval() - Exit" );
+		}
+
 		/// <summary>
 		/// Called by the LongPollingHandler when it receives an 'init' message to check if this message must be accepted or not.
 		/// </summary>
@@ -376,9 +437,9 @@ namespace CommonLibs.Web.LongPolling
 				connectionID = Guid.NewGuid().ToString();
 				var connectionEntry = new ConnectionEntry( this, sessionID, connectionID );
 				AllConnections.Add( connectionID, connectionEntry );
-				sessionEntry.ConnectionIDs.Add( connectionID );
+				sessionEntry.AddConnectionID( connectionID );
 
-				// The ConnectionID is connected but there is still no connection assigned to it => Must start a DisconnectionTimeout
+				// The ConnectionID is created but there is still no connection assigned to it => Must start a DisconnectionTimeout
 				LOG( "AllocateNewConnectionID(" + sessionID + ") - Starting DisconnectionTimeout" );
 				connectionEntry.DisconnectionTimeout = TasksQueue.CreateTask( 0, 0, 0, DisconnectionSeconds, 0, (taskEntry)=>{ConnectionEntry_DisconnectionTimeout(taskEntry, connectionEntry);} );
 				LOG( "AllocateNewConnectionID(" + sessionID + ") - Started DisconnectionTimeout " + connectionEntry.DisconnectionTimeout );
@@ -828,7 +889,7 @@ namespace CommonLibs.Web.LongPolling
 				}
 				else
 				{
-					if(! sessionEntry.ConnectionIDs.Remove(connectionID) )
+					if(! sessionEntry.RemoveConnectionID(connectionID) )
 						FAIL( "The connection '" + connectionID + "' is reqested to be removed but is not in 'AllSessions'" );
 				}
 
