@@ -49,6 +49,12 @@ namespace CommonLibs.Web.LongPolling
 
 		public static IApplicationBuilder UseMessageHandlerHttp(this IApplicationBuilder app, string route)
 		{
+			if( string.IsNullOrWhiteSpace(route) || route.Length <= 1 )
+				throw new ArgumentNullException( "route" );
+			if( route.StartsWith("~") )
+				// NB: Routes must start with '/'
+				route = route.Substring( 1 );
+
 			app.Use( async (context, next) =>
 				{
 					if( context.Request.Path != route )
@@ -79,7 +85,7 @@ namespace CommonLibs.Web.LongPolling
 				goto EXIT;
 			}
 
-			var connection = new HttpConnection( messageHandler, context, sessionID );
+			var connection = new HttpConnection( messageHandler, sessionID );
 			try
 			{
 				RootMessage request;

@@ -411,6 +411,34 @@ namespace CommonLibs.Web.LongPolling
 			return initAccepted;
 		}
 
+		/// <returns>'true' if a new session had to be allocated</returns>
+		public bool EnsureSessionIsAllocated(HttpContext context, string sessionID)
+		{
+			ASSERT( !string.IsNullOrEmpty(sessionID), "Missing parameter 'sessionID'" );
+			LOG( "EnsureSessionIsAllocated(" + sessionID + ") - Start" );
+
+			bool sessionAllocated = false;
+			lock( LockObject )
+			{
+				LOG( "EnsureSessionIsAllocated(" + sessionID + ") - Lock aquired" );
+
+				if(! AllSessions.ContainsKey(sessionID) )
+				{
+					LOG( "EnsureSessionIsAllocated(" + sessionID + ") - Allocating a new SessionEntry" );
+					AllSessions.Add( sessionID, new SessionEntry() );
+					sessionAllocated = true;
+				}
+
+				LOG( "EnsureSessionIsAllocated(" + sessionID + ") - Release lock" );
+			}
+
+			if( sessionAllocated )
+				SessionAllocated.Invoke( sessionID, context );
+
+			LOG( "EnsureSessionIsAllocated(" + sessionID + ") - EXIT" );
+			return sessionAllocated;
+		}
+
 		/// <param name="sessionID">The session this new ConnectionID will belong to</param>
 		/// <returns>The new ConnectionID allocated</returns>
 		public string AllocateNewConnectionID(HttpContext context, string sessionID)

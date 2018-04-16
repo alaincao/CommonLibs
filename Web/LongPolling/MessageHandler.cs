@@ -34,7 +34,11 @@ using System.Threading;
 using System.Globalization;
 using System.Web;
 
+using Microsoft.Extensions.DependencyInjection;
+
 using CommonLibs.Utils.Tasks;
+
+using HttpContext = Microsoft.AspNetCore.Http.HttpContext;
 
 namespace CommonLibs.Web.LongPolling
 {
@@ -43,25 +47,25 @@ namespace CommonLibs.Web.LongPolling
 
 	public class MessageHandler
 	{
-		[System.Diagnostics.Conditional("DEBUG")] private void LOG(string message)					{ CommonLibs.Utils.Debug.LOG( this, message ); }
-		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
-		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
+		[System.Diagnostics.Conditional("DEBUG")] protected void LOG(string message)				{ CommonLibs.Utils.Debug.LOG( this, message ); }
+		[System.Diagnostics.Conditional("DEBUG")] protected void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
+		[System.Diagnostics.Conditional("DEBUG")] protected void FAIL(string message)				{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
 		public interface IRouter
 		{
 			string[]	TriggerMessageKeys		{ get; }
 
-			void		ReceiveTriggeredMessageFromConnection(Message message);
+			void		ReceiveTriggeredMessage(Message message, object contextObject);
 			void		ReceiveMessageForUnmanagedConnection(string connectionID, Message message);
 			void		ReceiveMessageForUnmanagedSession(string sessionID, Message message);
 		}
 
 		private class CallbackItem
 		{
-			internal bool							IsThreaded						{ get { return (CallbackThreaded != null) ? true : false; } }
+			internal bool										IsThreaded			{ get { return (CallbackThreaded != null) ? true : false; } }
 			// If CallbackDirect is null, CallbackThreaded must be set ; And if CallbackThreaded is null, CallbackDirect must be set
-			internal Action<Message>				CallbackDirect					= null;
-			internal Action<TaskEntry,Message>		CallbackThreaded				= null;
+			internal Action<Message>							CallbackDirect		= null;
+			internal Action<TaskEntry,IServiceProvider,Message>	CallbackThreaded	= null;
 		}
 
 		/// <summary>
@@ -69,33 +73,22 @@ namespace CommonLibs.Web.LongPolling
 		/// </summary>
 		private class MessageContext
 		{
-			internal MessageHandler					MessageHandler;
-			internal CallbackItem					CallbackItem;
-			internal Message						Message;
-			internal object							ContextObject;
+			internal readonly MessageHandler	MessageHandler;
+			internal readonly CallbackItem		CallbackItem;
+			internal readonly Message			Message;
+			public object						ContextObject		{ get; private set; }
 
-			internal MessageContext(MessageHandler messageHandler, CallbackItem callbackItem, Message message)
+			internal MessageContext(MessageHandler messageHandler, CallbackItem callbackItem, Message message, object contextObject)
 			{
-				MessageHandler = messageHandler;
-				CallbackItem = callbackItem;
-				Message = message;
-
-				if( MessageHandler.SaveMessageContextObject != null )
-					try { ContextObject = MessageHandler.SaveMessageContextObject(); }
-					catch( System.Exception ex )  { MessageHandler.FAIL( "'MessageHandler.SaveMessageContextObject()' threw an exception (" + ex.GetType().FullName + "): " + ex.Message ); }
-				else
-					ContextObject = null;
-			}
-
-			internal void RestoreContext()
-			{
-				if( MessageHandler.RestoreMessageContextObject != null )
-					// Restore custom ContextObject
-					try { MessageHandler.RestoreMessageContextObject( ContextObject ); }
-					catch( System.Exception ex )  { MessageHandler.FAIL( "'MessageHandler.RestoreMessageContextObject()' threw an exception (" + ex.GetType().FullName + "): " + ex.Message ); }
+				MessageHandler	= messageHandler;
+				CallbackItem	= callbackItem;
+				Message			= message;
+				ContextObject	= contextObject;
 			}
 		}
 
+		/// <summary>Application's - root - unscoped - service provider</summary>
+		public readonly IServiceProvider			ApplicationServices;
 		public TasksQueue							TaskQueue						{ get; private set; }
 		public ConnectionList						ConnectionList					{ get; private set; }
 		private Dictionary<string,CallbackItem>		HandlerCallbacks				= new Dictionary<string,CallbackItem>();
@@ -131,22 +124,15 @@ namespace CommonLibs.Web.LongPolling
 		public Action<Message>						UnknownMessageTypeHandler;
 
 		/// <summary>
-		/// Set this callback if any object must be kept from the HTTP handler's thread to the message handler's thread (e.g. session object)
+		/// Set this callback if any object must be kept from the HTTP/WebSocket handler's thread and saved to the message handlers service provider (using the 'IMessageContext' service, 'ContextObject' property)
 		/// </summary>
-		public Func<object>							SaveMessageContextObject		= null;
-		/// <summary>
-		/// Set this callback to restore the object saved by the "GetHttpContextObject" callback
-		/// </summary>
-		public Action<object>						RestoreMessageContextObject		= null;
-		/// <summary>
-		/// Set this callback to undo the action performed by RestoreMessageContextObject when the message handler is terminated (e.g. to clear any [ThreadStatic] objects assigned to this thread)
-		/// </summary>
-		public Action								ClearMessageContextObject		= null;
+		public Func<HttpContext,object>				SaveMessageContextObject		= null;
 
-		public MessageHandler(TasksQueue tasksQueue, ConnectionList connectionList)
+		public MessageHandler(IServiceProvider rootServicesProvider, TasksQueue tasksQueue, ConnectionList connectionList)
 		{
 			LOG( "Constructor" );
 
+			ApplicationServices = rootServicesProvider;
 			TaskQueue = tasksQueue;
 			ConnectionList = connectionList;
 			FatalExceptionHandler = DefaultFatalExceptionHandler;
@@ -199,7 +185,7 @@ namespace CommonLibs.Web.LongPolling
 			}
 		}
 
-		public void AddMessageHandler(string messageType, Action<TaskEntry,Message> callback)
+		public void AddMessageHandler(string messageType, Action<TaskEntry,IServiceProvider,Message> callback)
 		{
 			ASSERT( !string.IsNullOrWhiteSpace(messageType), "Missing parameter 'messageType'" );
 			ASSERT( callback != null, "Missing parameter 'callback'" );
@@ -247,7 +233,7 @@ namespace CommonLibs.Web.LongPolling
 			LOG( "ConnectionList_ConnectionLost(" + connectionID + ") - Exit" );
 		}
 
-		public void ReceiveMessage(Message message)
+		public void ReceiveMessage(Message message, object contextObject=null)
 		{
 			ASSERT( message != null, "Missing parameter 'message'" );
 			LOG( "ReceiveMessage(" + message + ") - Start" );
@@ -262,7 +248,7 @@ namespace CommonLibs.Web.LongPolling
 					if( message.ContainsKey(triggerKey) )
 					{
 						LOG( "ReceiveMessage(" + message + ") - Invoke router for this message" );
-						Router.ReceiveTriggeredMessageFromConnection( message );
+						Router.ReceiveTriggeredMessage( message, contextObject );
 						LOG( "ReceiveMessage(" + message + ") - Router returned" );
 						goto EXIT;
 					}
@@ -281,7 +267,7 @@ namespace CommonLibs.Web.LongPolling
 				return;
 			}
 
-			var messageContext = new MessageContext( this, callbackItem, message );
+			var messageContext = new MessageContext( this, callbackItem, message, contextObject );
 			if(! callbackItem.IsThreaded )
 			{
 				// Process message right now
@@ -301,7 +287,7 @@ namespace CommonLibs.Web.LongPolling
 		/// Method that can be used by the message handlers to check if a message has inner messages to process (and process them)
 		/// </summary>
 		/// <param name="originalMessage">The message that the handler successfully processed</param>
-		public void CheckChainedMessages(Message originalMessage, Dictionary<string,object> additionalInfo=null)
+		public void CheckChainedMessages(Message originalMessage, Dictionary<string,object> additionalInfo=null, object contextObject=null)
 		{
 			ASSERT( originalMessage != null, "Missing parameter 'originalMessage'" );
 
@@ -321,7 +307,7 @@ namespace CommonLibs.Web.LongPolling
 						chainedMessage[ pair.Key ] = pair.Value;
 				}
 
-				ReceiveMessage( chainedMessage );
+				ReceiveMessage( chainedMessage, contextObject );
 			}
 		}
 
@@ -496,7 +482,6 @@ namespace CommonLibs.Web.LongPolling
 
 			LOG( "HandleMessageThread(" + taskEntry + "," + message + ") - Start" );
 
-			bool contextRestored = false;
 			try
 			{
 				if(! callbackItem.IsThreaded )
@@ -513,11 +498,16 @@ namespace CommonLibs.Web.LongPolling
 					ASSERT( callbackItem.CallbackDirect == null, "If 'IsThreaded' then 'callbackItem.CallbackDirect' is supposed to be null" );
 					ASSERT( callbackItem.CallbackThreaded != null, "If 'IsThreaded' then 'callbackItem.CallbackThreaded' is supposed to be set" );
 
-					// Restore message's context
-					messageContext.RestoreContext();
-					contextRestored = true;
+					// Create the scoped service provider
+					using( var scope = ApplicationServices.CreateScope() )
+					{
+						// Assign the ContextObject to the 'MessageContextService'
+						var services = scope.ServiceProvider;
+						services.GetRequiredService<MessageContextService>().ContextObject = messageContext.ContextObject;
 
-					callbackItem.CallbackThreaded( taskEntry, message );
+						// Invoke the handler's callback
+						callbackItem.CallbackThreaded( taskEntry, services, message );
+					}
 				}
 				LOG( "HandleMessageThread(" + taskEntry + "," + message + ") - Exit" );
 			}
@@ -530,13 +520,6 @@ namespace CommonLibs.Web.LongPolling
 			{
 				LOG( "HandleMessageThread(" + taskEntry + "," + message + ") - Exception" );
 				MessageHandlerExceptionHandler( message, ex );
-			}
-			finally
-			{
-				if( contextRestored && (ClearMessageContextObject != null) )
-					// Clear the restored message context
-					try { ClearMessageContextObject(); }
-					catch( System.Exception ex )  { FAIL( "'ClearMessageContextObject()' threw an exception (" + ex.GetType().FullName + "): " + ex.Message ); }
 			}
 		}
 	}

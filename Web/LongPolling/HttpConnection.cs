@@ -48,7 +48,6 @@ namespace CommonLibs.Web.LongPolling
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
 		public MessageHandler	MessageHandler		{ get; private set; }
-		internal HttpContext	HttpContext			{ get; private set; }
 
 		#region For IConnection
 
@@ -60,14 +59,12 @@ namespace CommonLibs.Web.LongPolling
 
 		private TaskCompletionSource<RootMessage>	CompletionSource	= null;
 
-		internal HttpConnection(MessageHandler messageHandler, HttpContext httpContext, string sessionID)
+		internal HttpConnection(MessageHandler messageHandler, string sessionID)
 		{
 			ASSERT( messageHandler != null, "Missing parameter 'messageHandler'" );
-			ASSERT( httpContext != null, "Missing parameter 'httpContext'" );
 			ASSERT( !string.IsNullOrEmpty(sessionID), "Missing parameter 'sessionID'" );
 
 			MessageHandler = messageHandler;
-			HttpContext = httpContext;
 			SessionID = sessionID;
 			ConnectionID = null;  // NB: Set later
 			Sending = false;
@@ -83,7 +80,7 @@ namespace CommonLibs.Web.LongPolling
 			{
 				case RootMessage.TypeInit:
 				{
-					bool initAccepted = connectionList.CheckInitAccepted( requestMessage, HttpContext );
+					bool initAccepted = connectionList.CheckInitAccepted( requestMessage, context );
 					if(! initAccepted )
 					{
 						// Init refused => Send 'logout'
@@ -155,6 +152,8 @@ namespace CommonLibs.Web.LongPolling
 					MessageHandler.HoldConnectionMessages( ConnectionID );
 					try
 					{
+						var contextObject = (MessageHandler.SaveMessageContextObject == null) ? null : MessageHandler.SaveMessageContextObject( context );
+
 						foreach( var messageItem in ((IEnumerable)requestMessage[ RootMessage.KeyMessageMessagesList ]).Cast<IDictionary<string,object>>() )
 						{
 							Message message = null;
@@ -162,7 +161,7 @@ namespace CommonLibs.Web.LongPolling
 							{
 								var receivedMessage = Message.CreateReceivedMessage( ConnectionID, messageItem );
 								LOG( "ReceiveRequest() - Receiving message '" + receivedMessage + "'" );
-								MessageHandler.ReceiveMessage( receivedMessage );
+								MessageHandler.ReceiveMessage( receivedMessage, contextObject );
 							}
 							catch( System.Exception ex )
 							{

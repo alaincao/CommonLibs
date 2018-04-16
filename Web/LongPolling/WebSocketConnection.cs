@@ -25,7 +25,6 @@ namespace CommonLibs.Web.LongPolling
 
 		private HttpContext			HttpContext;
 		internal WebSocket			Socket;
-		private object				MessageContext;
 
 		#region For IConnection
 
@@ -35,7 +34,7 @@ namespace CommonLibs.Web.LongPolling
 
 		#endregion
 
-		internal WebSocketConnection(MessageHandler messageHandler, HttpContext httpContext, WebSocket webSocket, string sessionID, object messageContext)
+		internal WebSocketConnection(MessageHandler messageHandler, HttpContext httpContext, WebSocket webSocket, string sessionID)
 		{
 			ASSERT( messageHandler != null, "Missing parameter 'messageHandler'" );
 			ASSERT( httpContext != null, "Missing parameter 'context'" );
@@ -47,7 +46,6 @@ namespace CommonLibs.Web.LongPolling
 			Registered = false;
 			HttpContext = httpContext;
 			Socket = webSocket;
-			MessageContext = messageContext;
 			SessionID = sessionID;
 			ConnectionID = null;  // NB: Set in'ReceiveInitMessage()' below
 			Sending = false;
@@ -67,8 +65,6 @@ namespace CommonLibs.Web.LongPolling
 				throw new WebSocketMiddleWare.CloseConnectionException( "Invalid message type '"+(messageType??"<NULL>")+"'. Expected '"+RootMessage.TypeInit+"'" );
 
 			// Validate the init message against the application
-			if( MessageHandler.RestoreMessageContextObject != null )
-				MessageHandler.RestoreMessageContextObject( MessageContext );  // NB: Not in the HttpContext anymore
 			bool initAccepted = ConnectionList.CheckInitAccepted( initMessage, HttpContext );
 			if(! initAccepted )
 			{
@@ -117,14 +113,14 @@ namespace CommonLibs.Web.LongPolling
 							Message message = null;
 							try
 							{
-								if( MessageHandler.RestoreMessageContextObject != null )
-									MessageHandler.RestoreMessageContextObject( MessageContext );
-
 								var messageItem = (IDictionary<string,object>)objMessageItem;
 								var receivedMessage = Message.CreateReceivedMessage( ConnectionID, messageItem );
 								LOG( "BeginProcessRequest() - Receiving message '" + receivedMessage + "'" );
+
 								receivedMessage[ Message.KeySenderID ] = ConnectionID;
-								MessageHandler.ReceiveMessage( receivedMessage );
+								var contextObject = (MessageHandler.SaveMessageContextObject == null) ? null : MessageHandler.SaveMessageContextObject( HttpContext );  // NB: Do not put this outside the foreach loop so the context can be changed between messages
+
+								MessageHandler.ReceiveMessage( receivedMessage, contextObject );
 							}
 							catch( System.Exception ex )
 							{

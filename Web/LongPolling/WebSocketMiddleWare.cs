@@ -48,6 +48,12 @@ namespace CommonLibs.Web.LongPolling
 
 		public static IApplicationBuilder UseMessageHandlerWebSocket(this IApplicationBuilder app, string route, int bufferSize=DefaultBufferSize, int initTimeoutSeconds=5)
 		{
+			if( string.IsNullOrWhiteSpace(route) || route.Length <= 1 )
+				throw new ArgumentNullException( "route" );
+			if( route.StartsWith("~") )
+				// NB: Routes must start with '/'
+				route = route.Substring( 1 );
+
 			app.Use( async (context, next) =>
 				{
 					if( context.Request.Path != route )
@@ -67,16 +73,12 @@ namespace CommonLibs.Web.LongPolling
 
 		private static async Task ProcessWebSocketRequest(MessageHandler messageHandler, HttpContext httpContext, int bufferSize, int initTimeoutSeconds)
 		{
-			object messageContext = null;
-			if( messageHandler.SaveMessageContextObject != null )
-				messageContext = messageHandler.SaveMessageContextObject();
-
 			var webSocket = await httpContext.WebSockets.AcceptWebSocketAsync();
 			var sessionID = messageHandler.ConnectionList.GetSessionIDFromHttpContext( httpContext );
 			if( string.IsNullOrEmpty(sessionID) )
 				throw new ArgumentException( "No SessionID available for this connection" );
 
-			var conn = new WebSocketConnection( messageHandler, httpContext, webSocket, sessionID, messageContext );
+			var conn = new WebSocketConnection( messageHandler, httpContext, webSocket, sessionID );
 			System.Exception exception = null;
 			try
 			{
