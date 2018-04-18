@@ -32,7 +32,7 @@ import { Message, ClientStatus } from './Client';
 
 declare var $: any;
 
-export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl:string)
+export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl:string, debug:boolean)
 {
 	var $this = $(this);
 	this.$this = $this;
@@ -153,7 +153,9 @@ export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl
 		if( this.__pollingRequest == null )
 		{
 			// The polling request must be (re)started => Send a simple poll request
-//console.log( 'POLL' );
+			if( debug )
+				console.log( 'POLL' );
+
 			message = {	'type': 'poll',
 						'sender': this.__connectionID };
 			this.__pollingRequest = new XMLHttpRequest();
@@ -179,7 +181,9 @@ export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl
 				// Add message content to send
 				message = messageItem[ 'content' ];
 				messageContents.push( message );
-//console.log( 'SND', message );
+
+				if( debug )
+					console.log( 'SND', message );
 			}
 
 			// Send message
@@ -293,7 +297,8 @@ export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl
 						if( responseType == 'init' )
 						{
 							this.__connectionID = response[ 'sender' ];
-//console.log( 'CID', this.__connectionID );
+							if( debug )
+								console.log( 'CID', this.__connectionID );
 
 							try
 							{
@@ -313,7 +318,8 @@ export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl
 						}
 						else if( responseType == 'logout' )
 						{
-//console.log( 'LOGOUT' );
+							if( debug )
+								console.log( 'LOGOUT' );
 							window.location.href = this.__logoutUrl;
 						}
 						else if( responseType == 'messages' )
@@ -325,7 +331,8 @@ export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl
 								{
 									var messageContent = messagesList[ i ];
 									var type = messageContent[ 'type' ];
-//console.log( 'RCV', messageContent );
+									if( debug )
+										console.log( 'RCV', messageContent );
 									this.$this.trigger( type, messageContent );
 								} catch( err ) {
 									// The assigned message handler threw an exception

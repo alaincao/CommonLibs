@@ -78,7 +78,7 @@ export function Client(p:{	debug?						: boolean,
 	}
 	else if( canUseHttp )
 	{
-		var client = http.HttpClient( p.httpHandlerUrl, p.syncedHandlerUrl, p.logoutUrl );
+		var client = http.HttpClient( p.httpHandlerUrl, p.syncedHandlerUrl, p.logoutUrl, p.debug );
 
 		// TODO: Alain: Cleanup 'HttpClient' & include 'sendMessage(message, callback)'
 
