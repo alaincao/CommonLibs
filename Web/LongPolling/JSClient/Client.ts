@@ -26,9 +26,12 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
+import * as evnt from '../../../Utils/Event/JS/EventsHandler';
 import * as sock from './WebSocketClient';
 import * as http from './HttpClient';
 import BaseClient from './BaseClient';
+
+export { IEventsHandler as EventsHandler } from '../../../Utils/Event/JS/EventsHandler';
 
 export var HttpClient = http.HttpClient;
 export var WebSocketClient = sock.WebSocketClient;
@@ -46,14 +49,7 @@ export interface MessageDict extends Message
 	[key:string]:any;
 }
 
-export interface EventsHandler
-{
-	bind	: (name:string, callback:(evt?:any,p?:any)=>void)=>this;
-	unbind	: (name:string, callback?:(evt?:any,p?:any)=>void)=>this;
-	trigger	: (name:string, p?:any)=>this;
-}
-
-export interface MessageHandler extends EventsHandler
+export interface MessageHandler extends evnt.IEventsHandler
 {
 	start					: ()=>void;
 	getStatus				: ()=>ClientStatus;
@@ -62,7 +58,7 @@ export interface MessageHandler extends EventsHandler
 	onStatusChanged			: (callback:(status:ClientStatus)=>void)=>this;
 	onInternalError			: (callback:(message:string)=>void)=>this;
 	onMessageHandlerFailed	: (callback:(error:any)=>void)=>this;
-	sendMessage				: (message:Message, callback?:(evt?:any,message?:Message)=>void)=>this;
+	sendMessage				: (message:Message, callback?:(evt:any,message?:Message)=>void)=>this;
 }
 
 export enum ClientStatus
@@ -87,9 +83,9 @@ export function fatalError(message:string)
 	}
 }
 
-export function createEventHandler() : EventsHandler
+export function createEventHandler() : evnt.IEventsHandler
 {
-	return $({});
+	return new evnt.EventsHandler;
 }
 
 export function Client(p:{	debug?						: boolean,
