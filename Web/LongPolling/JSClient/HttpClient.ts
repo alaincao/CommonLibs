@@ -4,7 +4,7 @@
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
 //
-// Copyright (c) 2010 - 2016 Alain CAO
+// Copyright (c) 2010 - 2019 Alain CAO
 //
 // Permission is hereby granted, free of charge, to any person obtaining
 // a copy of this software and associated documentation files (the
@@ -26,420 +26,280 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-// TODO: ACA: HttpClient: Rewrite in clean TypeScript !!!
+import * as client from "./Client";
+import BaseClient from "./BaseClient";
 
-import { Message, ClientStatus } from './Client';
-
-declare var $: any;
-
-export function HttpClient(handlerUrl:string, syncedHandlerUrl:string, logoutUrl:string)
+export interface RootMessage extends client.Message
 {
-	var $this = $(this);
-	this.$this = $this;
-	var thisDOM = this;
+	messages? : client.Message[];
+}
 
-	///////////////////////////
-	// Reserved event names: //
-	///////////////////////////
+export class HttpClient extends BaseClient
+{
+	private	handlerUrl		: string;
+	private errorRetryMax	: number;
 
-	// Bind to this event to be warned of changes in the connection status
-	// Event parameter:	'CONNECTED' when there is a polling request currently connected to the server.
-	//					'DISCONNECTED' when the connection to the server is lost (NB: Try run the 'verifyConnections()' method to try to reconnect to the server).
-	//					'RUNNING' when the message request is currently sending messages to the server.
-	//					'PENDING' when the message request is currently sending messages to the server and there are messages pending in the queue
-	$this.statusChangedEvent = "long_polling_client_status_changed";
+	private pollingRequest	: XMLHttpRequest	= null;
+	private messageRequest	: XMLHttpRequest	= null;
 
-	// Bind to this event to receive errors when an assigned message handler threw an exception.
-	// Event parameter: The error object threw by the assigned message handler as receivd by the catch().
-	$this.messageHandlerFailedEvent = 'message_handler_failed';
-
-	// Bind to this event to get error messages when an internal error occures inside the LongPollingClient object
-	// Event parameter: A description string of the error
-	$this.internalErrorEvent = 'long_polling_client_error';
-
-	// Bind to this event to receive the ConnectionID that has been assigned to this LongPollingClient as soon as it has been received
-	// Event parameter: The ConnectionID (string)
-	$this.connectionIDReceivedEvent = 'long_polling_client_connection_id';
-
-	///////////////////////
-	// Member variables: //
-	///////////////////////
-
-	this.__status					= ClientStatus.DISCONNECTED;
-
-	// URL of the server-side message handler
-	this.__handlerUrl				= handlerUrl;
-	// URL of the server-side synced handler
-	this.__syncedHandlerUrl			= syncedHandlerUrl;
-	// URL of the logout page
-	this.__logoutUrl				= logoutUrl;
-
-	// The only 2 HTTP requests that can be running at the same time:
-	this.__pollingRequest			= null;
-	this.__messageRequest			= null;
-
-	// This client's SenderID
-	this.__connectionID				= null;
-
-	// The list of messages that are waiting for the __messageRequest to be available
-	this.__pendingMessages			= null;
-
-	//////////////
-	// Methods: //
-	//////////////
-
-	this.getSyncedHandlerUrl = function()
+	constructor(p:{	debug?				: boolean,
+					handlerUrl			: string,	// Required: The URL of the server's WebSocket listener
+					syncedHandlerUrl?	: string,	// Optional: The URL to the Synced HTTP handler if used (e.g. file uploads)
+					logoutUrl?			: string,	// Optional: The URL to redirect to when the server asks to logout
+					errorRetryMax?		: number,	// Optional: The number of connection try before stopping the pollings
+				})
 	{
-		return this.__syncedHandlerUrl;
+		super({ debug:p.debug, syncedHandlerUrl:p.syncedHandlerUrl, logoutUrl:p.logoutUrl });
+		const self = this;
+
+		self.handlerUrl		= (p.handlerUrl == null) ? 'HANDLER_URL_UNDEFINED' : p.handlerUrl;
+		this.errorRetryMax	= (p.errorRetryMax == null) ? 10 : p.errorRetryMax;
 	}
 
-	this.getStatus = function()
+	public /*override*/ async start() : Promise<void>
 	{
-		var newStatus;
-		if( this.__pollingRequest == null )
+		const self = this;
+
+		if( self.getStatus() != client.ClientStatus.DISCONNECTED )
 		{
-			newStatus = ClientStatus.DISCONNECTED;
-		}
-		else if( this.__messageRequest != null )
-		{
-			if( this.__pendingMessages != null )
-				newStatus = ClientStatus.PENDING;
-			else
-				newStatus = ClientStatus.RUNNING;
-		}
-		else
-		{
-			newStatus = ClientStatus.CONNECTED;
+			self.logWarning( `'start()' invoked, but status is not 'DISCONNECTED' ; Ignoring` );
+			return;
 		}
 
-		if( this.__status != newStatus )
-		{
-			this.__status = newStatus;
-			try { this.$this.trigger( this.$this.statusChangedEvent, newStatus ); } catch(err) {}
-		}
-		return newStatus;
-	}
-
-	this.onConnectionIdReceived = function(callback:(cid:string)=>void)
-	{
-		if( this.__connectionID != null )
-		{
-			// There is already a ConnectionID => Invoke callback right now
-			try
-			{
-				callback( this.__connectionID );
-			} catch( err ) {
-				// The assigned message handler threw an exception
-				try { this.$this.trigger( this.messageHandlerFailedEvent, err ); } catch(err) {}
-			}
-		}
-		else
-		{
-			// The ConnectionID is not received yet => Bind the callback to the 'connectionIDReceivedEvent' trigger
-			this.$this.bind( this.$this.connectionIDReceivedEvent, (function(cb)
-						{
-							return function(evt:any,connectionID:string)
-							{
-								cb( connectionID );
-							}
-						})(callback) );
-		}
-	}
-
-	this.verifyConnections = function()
-	{
-		var message : any;
-
-		if( this.__pollingRequest == null )
-		{
-			// The polling request must be (re)started => Send a simple poll request
-//console.log( 'POLL' );
-			message = {	'type': 'poll',
-						'sender': this.__connectionID };
-			this.__pollingRequest = new XMLHttpRequest();
-			this.__send( this.__pollingRequest, message );
-		}
-		if( this.__messageRequest == null )
-		{
-			// There is no request currently running
-
-			if( this.__pendingMessages == null )
-				// No pending message
-				return;
-			if( this.__connectionID == null )
-				// No ConnectionID available yet (wait for init() to terminate...)
-				return;
-
-			// Create message list with all the pending messages
-			var messageContents = [];
-			for( var i=0; i<this.__pendingMessages.length; ++i )
-			{
-				var messageItem = this.__pendingMessages[ i ];
-
-				// Add message content to send
-				message = messageItem[ 'content' ];
-				messageContents.push( message );
-//console.log( 'SND', message );
-			}
-
-			// Send message
-			message = {	'type': 'messages',
-						'sender': this.__connectionID,
-						'messages': messageContents };
-			this.__messageRequest = new XMLHttpRequest();
-			this.__send( this.__messageRequest, message );
-			this.__pendingMessages = null;  // No more pending messages
-		}
-	}
-
-	this.sendMessages = function(messages:Message[])
-	{
-		if( this.__pendingMessages == null )
-			this.__pendingMessages = [];
-
-		for( var i=0; i<messages.length; ++i )
-		{
-			var messageItem = { 'content': messages[i] };
-			this.__pendingMessages.push( messageItem );
-		}
-
-		// Send pending messages if the request is available
-		this.verifyConnections();
-		this.getStatus();
-	}
-
-	this.start = function()
-	{
-		var self = this;
-
-		// Start the __pollingRequest
-		var message = { 'type': 'init' };
-		var pendingQuery = new XMLHttpRequest();
-		self.__pollingRequest = pendingQuery;  // Assign this member immediately so that 'verifyConnections()' doesn't create its own query
-		var sendRequestFunction = function()
-			{
-				self.__send( pendingQuery, message );
-			};
-
-//		if( $.browser.safari || $.browser.opera )
-//		{
-//			// Opera & Safari thinks the page is still loading until all the initial requests are terminated (which never happens in case of a long-polling...)
-//			// => Those browsers shows the 'turning wait icon' indefinitely (Safari) or even worse never show the page! (Opera)
-
-//			// Add a delay before sending the initial long-polling query
-//			self.$this.delay( 300 ).queue( function(){ sendRequestFunction(); } );
-//		}
-//		else
-//		{
-			// Other browsers => sending the initial long-polling query immediately
-			sendRequestFunction();
-//		}
-
-		$(window).unload( function()
-			{
-				// When leaving the page, explicitly abort the polling requests because IE keeps them alive!!!
-				try { self.__pollingRequest.abort(); }
-				catch( err ) {}
-
-				// Kill also the "request" request if any
-				try { self.__messageRequest.abort(); }
-				catch( err ) {}
-			} );
-	}
-
-	this.__send = function(requestObject:XMLHttpRequest, messageObject:Message)
-	{
-		var strMessageObject = JSON.stringify( messageObject );
-		requestObject.open( "POST", this.__handlerUrl, true );
-		requestObject.setRequestHeader( "Content-Type", "application/x-www-form-urlencoded" );
-
-		var callback = (function(self,req) {
-				return function() { self.__onRequestStateChange(req); };
-			})( this, requestObject );
-		requestObject.onreadystatechange = callback;
-
-		requestObject.send( strMessageObject );
-	};
-
-	this.__onRequestStateChange = function(request:XMLHttpRequest)
-	{
+		// Send the init request
+		let connectionID : string;
 		try
 		{
-			if( request.readyState == 4 )
-			{
-				if( request == this.__pollingRequest )
-				{
-					// The __pollingRequest ended
-					this.__pollingRequest = null;
-				}
-				else if( request == this.__messageRequest )
-				{
-					// The __messageRequest ended
-					this.__messageRequest = null;
-				}
-				else
-				{
-					try { this.$this.trigger( this.$this.internalErrorEvent, 'Received a response from an unknown request' ); } catch(err) {}
-				}
+			connectionID = await self.sendInitRequest();
+		}
+		catch( err )
+		{
+			self.triggerInternalError( `Error while sending the 'init' request: ${err}` );
+			self.triggerStatusChanged( client.ClientStatus.DISCONNECTED );
+			return;
+		}
+		self.triggerConnectionIdReceived( connectionID );
+		self.triggerStatusChanged( client.ClientStatus.CONNECTED );
 
-				if( request.status == 200 )  // HTTP 200 OK
-				{
-					var strResponse = request.responseText;
-					var response;
-					try
-					{
-						response = JSON.parse( strResponse );
-						var responseType = response[ 'type' ];
-						if( responseType == 'init' )
-						{
-							this.__connectionID = response[ 'sender' ];
-//console.log( 'CID', this.__connectionID );
+		// Initial messages check
+		/*await*/ self.checkPendingMessages();
 
-							try
-							{
-								this.$this.trigger( this.$this.connectionIDReceivedEvent, this.__connectionID );
-							} catch( err ) {
-								// The assigned message handler threw an exception
-								try { this.$this.trigger( this.$this.messageHandlerFailedEvent, err ); } catch(err) {}
-							}
-
-							// Initiate initial connection
-							this.verifyConnections();
-						}
-						else if( responseType == 'reset' )
-						{
-							// Restart the __pollingRequest
-							this.verifyConnections();
-						}
-						else if( responseType == 'logout' )
-						{
-//console.log( 'LOGOUT' );
-							window.location.href = this.__logoutUrl;
-						}
-						else if( responseType == 'messages' )
-						{
-							var messagesList = response[ 'messages' ];
-							for( var i=0; i<messagesList.length; ++i )
-							{
-								try
-								{
-									var messageContent = messagesList[ i ];
-									var type = messageContent[ 'type' ];
-//console.log( 'RCV', messageContent );
-									this.$this.trigger( type, messageContent );
-								} catch( err ) {
-									// The assigned message handler threw an exception
-									try { this.$this.trigger( this.$this.messageHandlerFailedEvent, err ); } catch(err) {}
-								}
-							}
-							this.verifyConnections();
-						}
-						else
-						{
-							throw 'Unknown response type \'' + responseType + '\'';
-						}
-					} catch( err ) {
-						try { this.$this.trigger( this.$this.internalErrorEvent, 'JSON Parse Error: ' + err ); } catch(err) {}
-						this.verifyConnections();
-					}
-				}
-				else if( (request.status == 0/*All browsers*/) || (request.status == 12031/*Only IE*/) )
-				{
-					// Request aborted (e.g. redirecting to another page)
-					// this.verifyConnections();  <= Don't try to reconnect
-				}
-				else if( request.status == 12002/*Only IE*/ )
-				{
-					// Request timeout
-//console.log( '__onRequestStateChange - request.status=12002 (timeout)' );
-// TODO: Alain: Warning (?)
-					this.verifyConnections();  // Try reconnect
-				}
-				else
-				{
-					try { this.$this.trigger( this.$this.internalErrorEvent, 'Server error (status="' + request.status + '")' ); } catch(err) {}
-// TODO: Alain: Maximum number of retry then definitely disconnect
-					//window.location = this.__logoutUrl;  // Redirect to logout page
-					this.verifyConnections();  // Try reconnect
-				}
-			}
-			else
-			{
-				// "readyState != 4" == still running
-				// NOOP
-			}
+		try
+		{
+			// Launch poll requests
+			await self.runPollLoop();
+		}
+		catch( err )
+		{
+			self.triggerInternalError( `Poll loop threw an exception: ${err}` );
 		}
 		finally
 		{
-			this.getStatus();
+			// Stopped
+			self.triggerStatusChanged( client.ClientStatus.DISCONNECTED );
 		}
-	};
+	}
 
-	////////////////////////////////////////////////////////////////
-	// Redirected functions 'jquery object' => 'original object': //
-	////////////////////////////////////////////////////////////////
+	public /*override*/ stop() : void
+	{
+		const self = this;
 
-	$this.start						= function() { thisDOM.start(); };
-	$this.getSyncedHandlerUrl		= function() { return thisDOM.getSyncedHandlerUrl(); };
-	$this.getStatus					= function() { return thisDOM.getStatus(); };
-	$this.sendMessage				= function(message:Message) { thisDOM.sendMessages( [message] ); };
-	$this.sendMessages				= function(messages:Message[]) { thisDOM.sendMessages( messages ); };
-	$this.verifyConnections			= function() { thisDOM.verifyConnections(); };
-
-	/////////////////////////////////////
-	// Implement Client.MessageHandler //
-	/////////////////////////////////////
-
-	$this.onConnectionIdReceived = function(callback:(cid:string)=>void)
+		if( self.getStatus() == client.ClientStatus.DISCONNECTED )
 		{
-			thisDOM.onConnectionIdReceived(callback);
-			return $this;
-		};
-	$this.onStatusChanged = function(callback:(status:ClientStatus)=>void)
+			// Already disconnected => NOOP
+			self.logWarning( `'stop()' invoked, but state is already 'DISCONNECTED'` );
+			return;
+		}
+
+		// Change status
+		// nb: do that before aborting reuqests so that they are not retried
+		self.triggerStatusChanged( client.ClientStatus.DISCONNECTED );
+
+		// Abort requests if any
+		if( self.pollingRequest != null )
+			try { self.pollingRequest.abort(); }
+			catch( err ) { self.logWarning( `'pollingRequest.abort()' threw an exception: ${err}` ); }
+		if( self.messageRequest != null )
+			try { self.messageRequest.abort(); }
+			catch( err ) { self.logWarning( `'messageRequest.abort()' threw an exception: ${err}` ); }
+	}
+
+	/** Returns: the received ConnectionID */
+	private async sendInitRequest() : Promise<string>
+	{
+		const self = this;
+
+		const message : RootMessage = { type: 'init' };
+		const response = await self.sendHttpRequest( ()=>{}, message );
+		if( response == null )
+			throw 'Init request failed';
+		switch( response.type )
 		{
-			$this.bind( $this.statusChangedEvent, function(evt:any, status:ClientStatus)
+			case 'init':
+				break;
+			case 'logout':
+				self.triggerLogoutReceived();
+				throw 'Init request rejected by server';
+			default:
+				throw `Unknown response type '${response.type}'`;
+		}
+
+		const connectionId = response.sender;
+		if( connectionId == null )
+			throw 'Server did not responded with ConnectionID';
+		return connectionId;
+	}
+
+	private async runPollLoop() : Promise<void>
+	{
+		const self = this;
+		self.assert( self.pollingRequest == null, `'runPollLoop()' invoked, but 'pollingRequest' is already set` );
+
+		const requestMessage : client.Message = {	type	: 'poll',
+													sender	: self.getConnectionId() };
+		let retryCount = 0;
+		while( true )
+		{
+			let responseMessage : client.Message;
+			try
+			{
+				// Send request
+				self.log( 'message poll' );
+				responseMessage = await self.sendHttpRequest( req=>self.pollingRequest = req, requestMessage );
+				if( responseMessage == null )
+					throw 'Request aborted';
+
+				// Process response
+				self.processResponseMessage( responseMessage );
+
+				// Polling request went Ok => Reset retry count if any
+				retryCount = 0;
+			}
+			catch( err )
+			{
+				if( self.getStatus() == client.ClientStatus.DISCONNECTED )
 				{
-					callback( status );
-				} );
-			return $this;
-		};
-	$this.onInternalError = function(callback:(message:string)=>void)
-		{
-			$this.bind( $this.internalErrorEvent, function(e:any,message:string)
-				{
-					try
-					{
-						callback(message);
-					}
-					catch(err)
-					{
-						// NB: Really not much we can do here ...
-						if( (console != null) && (console.error != null) )
-							console.error( 'Error while invoking long_polling_client_error event', err );
-					}
-				} );
-		};
-	$this.onMessageHandlerFailed = function(callback:(message:string)=>void)
-		{
-			$this.bind( $this.messageHandlerFailedEvent, function(evt:any,error:any)
-				{
-					try
-					{
-						callback(error);
-					}
-					catch(err)
-					{
-						$this.trigger( $this.internalErrorEvent, 'Error while invoking message_handler_failed event: '+err );
-					}
-				} );
-		};
+					// Stopped
+					self.logWarning( 'Polling stopped' );
+					return;
+				}
 
-	/////////////////////
-	// Initialization: //
-	/////////////////////
+				self.triggerInternalError( `Polling request failed: ${err}` );
 
-	// Return the JQuery object
-	return $this;
+				if( self.getStatus() == client.ClientStatus.DISCONNECTED )
+				{
+					// Stopped
+					self.logWarning( 'Polling stopped' );
+					return;
+				}
+
+				if( (++retryCount) >= self.errorRetryMax )
+					// Too many fails
+					return;
+			}
+		}
+	}
+
+	protected /*override*/ async send(messages:client.Message[]) : Promise<void>
+	{
+		const self = this;
+		self.assert( self.messageRequest == null, `'send()' invoked, but messageRequest is already set` );
+
+		// Send request
+		const request : RootMessage = {	type		: 'messages',
+										sender		: self.getConnectionId(),
+										messages	: messages };
+		const response = await self.sendHttpRequest( req=>self.messageRequest=req, request );
+		if( response == null )
+			throw 'Message request failed';
+
+		// Process response
+		self.processResponseMessage( response );
+	}
+
+	private processResponseMessage(rootMessage:client.Message) : void
+	{
+		const self = this;
+
+		switch( rootMessage.type )
+		{
+			case 'reset':
+				// Comming from the polling request => Just ignore to restart another request
+				break;
+			case 'logout':
+				// Leave the handling of this to BaseClient
+				self.triggerLogoutReceived();
+				break;
+			case 'messages':
+				self.receiveMessages( (<client.MessageDict>rootMessage).messages );
+				break;
+			default:
+				throw `Unknown response type ${rootMessage.type}' for root message`;
+		}
+	}
+
+	/** NB: can return 'null' for aborted requests (e.g. redirecting to another page) */
+	private sendHttpRequest(assignRequest:(req:XMLHttpRequest)=>void, rootMessage:client.Message) : Promise<RootMessage>
+	{
+		const self = this;
+
+		const strMessageObject = JSON.stringify( rootMessage );
+		const request = new XMLHttpRequest();
+		request.open( "POST", self.handlerUrl, true );
+		request.setRequestHeader( "Content-Type", "application/x-www-form-urlencoded" );
+
+		assignRequest( request );
+		const rv = new Promise<client.Message>( (resolve,reject)=>
+			{
+				request.onreadystatechange = (evt)=>
+					{
+						if( request.readyState != 4 )
+							// "readyState != 4" == still running => NOOP
+							return;
+						// here: request terminated => Must invoke either 'resolve()' or 'reject()'
+						assignRequest( null );
+
+						if( (request.status == 0/*All browsers*/) || (request.status == 12031/*Only IE*/) )
+						{
+							// Request aborted (e.g. redirecting to another page)
+							self.logWarning( 'Request aborted' );
+							resolve( null );
+							return;
+						}
+
+						if( request.status == 12002/*Only IE*/ )
+						{
+							// Request timeout
+							reject( 'Request timeout' );
+							return;
+						}
+
+						if( request.status != 200 )  // HTTP 200 OK
+						{
+							reject( 'Server error (status="' + request.status + '")' );
+							return;
+						}
+						// here: HTTP 200 Ok
+
+						let response : RootMessage;
+						try
+						{
+							response = JSON.parse( request.responseText );
+						}
+						catch( err )
+						{
+							reject( `JSON parse error: ${err}` );
+							return;
+						}
+
+						// All OK !
+						resolve( response );
+					};
+			} );
+		request.send( strMessageObject );
+
+		return rv;
+	}
 }
 
 export default HttpClient;
