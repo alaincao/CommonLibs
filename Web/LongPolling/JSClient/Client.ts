@@ -1,5 +1,34 @@
-﻿import * as sock from './WebSocketClient';
+﻿//
+// CommonLibs/Web/LongPolling/JSClient/Client.ts
+//
+// Author:
+//   Alain CAO (alain.cao@sigmaconso.com)
+//
+// Copyright (c) 2019 SigmaConso
+//
+// Permission is hereby granted, free of charge, to any person obtaining
+// a copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to
+// permit persons to whom the Software is furnished to do so, subject to
+// the following conditions:
+//
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+// LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+// OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+
+import * as sock from './WebSocketClient';
 import * as http from './HttpClient';
+import BaseClient from './BaseClient';
 
 export var HttpClient = http.HttpClient;
 export var WebSocketClient = sock.WebSocketClient;
@@ -19,32 +48,44 @@ export interface MessageDict extends Message
 
 export interface EventsHandler
 {
-	bind	: (name:string, callback:(evt?:any,p?:any)=>void)=>EventsHandler;
-	unbind	: (name:string, callback?:(evt?:any,p?:any)=>void)=>EventsHandler;
-	trigger	: (name:string, p?:any)=>EventsHandler;
+	bind	: (name:string, callback:(evt?:any,p?:any)=>void)=>this;
+	unbind	: (name:string, callback?:(evt?:any,p?:any)=>void)=>this;
+	trigger	: (name:string, p?:any)=>this;
 }
 
-export interface MessageHandler
+export interface MessageHandler extends EventsHandler
 {
 	start					: ()=>void;
 	getStatus				: ()=>ClientStatus;
 	getSyncedHandlerUrl		: ()=>string;
-	onConnectionIdReceived	: (callback:(connectionId:string)=>void)=>MessageHandler;
-	onStatusChanged			: (callback:(status:ClientStatus)=>void)=>MessageHandler;
-	onInternalError			: (callback:(message:string)=>void)=>MessageHandler;
-	onMessageHandlerFailed	: (callback:(error:any)=>void)=>MessageHandler;
-	bind					: (name:string, callback:(evt?:any,message?:Message)=>void)=>EventsHandler;
-	unbind					: (name:string, callback?:(evt?:any)=>void)=>EventsHandler;
-	sendMessage				: (message:Message, callback?:(evt?:any,message?:Message)=>void)=>MessageHandler;
+	onConnectionIdReceived	: (callback:(connectionId:string)=>void)=>this;
+	onStatusChanged			: (callback:(status:ClientStatus)=>void)=>this;
+	onInternalError			: (callback:(message:string)=>void)=>this;
+	onMessageHandlerFailed	: (callback:(error:any)=>void)=>this;
+	sendMessage				: (message:Message, callback?:(evt?:any,message?:Message)=>void)=>this;
 }
 
 export enum ClientStatus
 {
-	DISCONNECTED,	// When the connection to the server is not yet established or is lost
+	DISCONNECTED,	// When the connection to the server is not yet established or is lost.
 	CONNECTED,		// When there is a polling request currently connected to the server.
-	PENDING,		// (NB: Only used by HttpClient) When the message request is currently sending messages to the server and there are messages pending in the queue
-	RUNNING,		// (NB: Only used by HttpClient) When the message request is currently sending messages to the server.
+	SENDING,		// When a message request is currently sending messages to the server.
 };
+
+/** Last resort error handler => Should never been called ... */
+export function fatalError(message:string)
+{
+	if( (console != null) && (console.error != null) )
+	{
+		console.error( 'Fatal error:', message );
+	}
+	else
+	{
+		// NB: Really not much more we can do here ...
+		try { alert( message ); }
+		catch( err ) {}
+	}
+}
 
 export function createEventHandler() : EventsHandler
 {
@@ -60,9 +101,9 @@ export function Client(p:{	debug?						: boolean,
 							logoutUrl					: string
 					}) : MessageHandler
 {
-	var canUseSocket : boolean = (p.webSocketHandlerUrl != null);
+	let canUseSocket : boolean = (p.webSocketHandlerUrl != null);
 	canUseSocket = ( canUseSocket && (typeof(WebSocket) != 'undefined') );
-	var canUseHttp : boolean = (p.httpHandlerUrl != null);
+	const canUseHttp : boolean = (p.httpHandlerUrl != null);
 
 	if( p.debug )
 	{
@@ -72,48 +113,26 @@ export function Client(p:{	debug?						: boolean,
 			p.debug = false;
 	}
 
+	let client : BaseClient;
 	if( canUseSocket )
 	{
-		return new sock.WebSocketClient({ debug:p.debug, handlerUrl:p.webSocketHandlerUrl, keepAliveUrl:p.webSocketKeepAliveUrl, keepAliveTimeout:p.webSocketKeepAliveTimeout, syncedHandlerUrl:p.syncedHandlerUrl, logoutUrl:p.logoutUrl });
+		client = new sock.WebSocketClient({ debug:p.debug, handlerUrl:p.webSocketHandlerUrl, syncedHandlerUrl:p.syncedHandlerUrl, keepAliveUrl:p.webSocketKeepAliveUrl, keepAliveTimeout:p.webSocketKeepAliveTimeout, logoutUrl:p.logoutUrl });
 	}
 	else if( canUseHttp )
 	{
-		var client = http.HttpClient( p.httpHandlerUrl, p.syncedHandlerUrl, p.logoutUrl, p.debug );
-
-		// TODO: Alain: Cleanup 'HttpClient' & include 'sendMessage(message, callback)'
-
-		// Override 'client.sendMessage()' to support a second argument: 'callback'
-		var sendMessageUid = 0;
-		var baseSendMessage = client.sendMessage;
-		client.sendMessage = function(message:Message, callback:any)
-			{
-				if( callback != null )
-				{
-					// Attach the callback to a new one-shot message handler
-					var replyMessageHandler = 'commonlibs_message_handler_autoreply_' + (++ sendMessageUid);
-					message[ 'reply_to_type' ] = replyMessageHandler;
-
-					client.bind( replyMessageHandler, function(evt:any, message:Message)
-						{
-							// The message has returned => unbind the one-shot message handler
-							client.unbind( replyMessageHandler );
-
-							// Forward the message to the callback
-							callback( evt, message );
-						} );
-				}
-
-				// Invoke original 'sendMessage()' function
-				baseSendMessage( message );
-			};
-
-		return client;
+		client = new http.HttpClient({ debug:p.debug, handlerUrl:p.httpHandlerUrl, syncedHandlerUrl:p.syncedHandlerUrl, logoutUrl:p.logoutUrl });
 	}
 	else
 	{
-		sock.error( 'Unable to find a suitable message handler protocol' );  // NB: Temporarily use the same error handler (until the whole 'utils.*.ts' are merged)
-		return null;
+		throw 'Unable to find a suitable message handler protocol';
 	}
+
+	client.onInternalError( (message)=>
+		{
+			if( (console != null) && (console.error != null) )
+				console.error( message );
+		} );
+	return client;
 }
 
 export default Client;
