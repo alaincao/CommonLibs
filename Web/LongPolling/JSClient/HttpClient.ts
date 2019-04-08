@@ -161,13 +161,18 @@ export class HttpClient extends BaseClient
 		while( true )
 		{
 			let responseMessage : client.Message;
+			let triggerError = true;
 			try
 			{
 				// Send request
 				self.log( 'message poll' );
 				responseMessage = await self.sendHttpRequest( req=>self.pollingRequest = req, requestMessage );
 				if( responseMessage == null )
+				{
+					// Request aborted probably because we are being redirected to another page
+					triggerError = false;  // => Don't show the error to the user
 					throw 'Request aborted';
+				}
 
 				// Process response
 				self.processResponseMessage( responseMessage );
@@ -184,18 +189,18 @@ export class HttpClient extends BaseClient
 					return;
 				}
 
-				self.triggerInternalError( `Polling request failed: ${err}` );
-
-				if( self.getStatus() == client.ClientStatus.DISCONNECTED )
+				if( (++retryCount) < self.errorRetryMax )
 				{
-					// Stopped
-					self.logWarning( 'Polling stopped' );
+					// Failed, but need to retry
+					if( triggerError )
+						self.triggerInternalError( `Polling request failed: ${err}` );
+				}
+				else
+				{
+					// Too many fails
+					self.triggerInternalError( `Polling request failed: ${err}` );  // nb: Show the error to the user even if (triggerError == false)
 					return;
 				}
-
-				if( (++retryCount) >= self.errorRetryMax )
-					// Too many fails
-					return;
 			}
 		}
 	}
