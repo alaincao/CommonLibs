@@ -36,8 +36,8 @@ export interface RootMessage extends client.Message
 
 export class HttpClient extends BaseClient
 {
-	private	handlerUrl		: string;
-	private errorRetryMax	: number;
+	private	readonly handlerUrl		: string;
+	private readonly errorRetryMax	: number;
 
 	private pollingRequest	: XMLHttpRequest	= null;
 	private messageRequest	: XMLHttpRequest	= null;
@@ -50,9 +50,8 @@ export class HttpClient extends BaseClient
 				})
 	{
 		super({ debug:p.debug, syncedHandlerUrl:p.syncedHandlerUrl, logoutUrl:p.logoutUrl });
-		const self = this;
 
-		self.handlerUrl		= (p.handlerUrl == null) ? 'HANDLER_URL_UNDEFINED' : p.handlerUrl;
+		this.handlerUrl		= (p.handlerUrl == null) ? 'HANDLER_URL_UNDEFINED' : p.handlerUrl;
 		this.errorRetryMax	= (p.errorRetryMax == null) ? 10 : p.errorRetryMax;
 	}
 
@@ -76,7 +75,7 @@ export class HttpClient extends BaseClient
 		{
 			self.triggerInternalError( `Error while sending the 'init' request: ${err}` );
 			self.triggerStatusChanged( client.ClientStatus.DISCONNECTED );
-			return;
+			throw err;
 		}
 		self.triggerConnectionIdReceived( connectionID );
 		self.triggerStatusChanged( client.ClientStatus.CONNECTED );
@@ -84,20 +83,8 @@ export class HttpClient extends BaseClient
 		// Initial messages check
 		/*await*/ self.checkPendingMessages();
 
-		try
-		{
-			// Launch poll requests
-			await self.runPollLoop();
-		}
-		catch( err )
-		{
-			self.triggerInternalError( `Poll loop threw an exception: ${err}` );
-		}
-		finally
-		{
-			// Stopped
-			self.triggerStatusChanged( client.ClientStatus.DISCONNECTED );
-		}
+		// Launch poll requests
+		/*await*/ self.runPollLoop();
 	}
 
 	public /*override*/ stop() : void
@@ -154,54 +141,66 @@ export class HttpClient extends BaseClient
 	{
 		const self = this;
 		self.assert( self.pollingRequest == null, `'runPollLoop()' invoked, but 'pollingRequest' is already set` );
-
-		const requestMessage : client.Message = {	type	: 'poll',
-													sender	: self.getConnectionId() };
-		let retryCount = 0;
-		while( true )
+		try
 		{
-			let responseMessage : client.Message;
-			let triggerError = true;
-			try
+			const requestMessage : client.Message = {	type	: 'poll',
+														sender	: self.getConnectionId() };
+			let retryCount = 0;
+			while( true )
 			{
-				// Send request
-				self.log( 'message poll' );
-				responseMessage = await self.sendHttpRequest( req=>self.pollingRequest = req, requestMessage );
-				if( responseMessage == null )
+				let responseMessage : client.Message;
+				let triggerError = true;
+				try
 				{
-					// Request aborted probably because we are being redirected to another page
-					triggerError = false;  // => Don't show the error to the user
-					throw 'Request aborted';
+					// Send request
+					self.log( 'message poll' );
+					responseMessage = await self.sendHttpRequest( req=>self.pollingRequest = req, requestMessage );
+					if( responseMessage == null )
+					{
+						// Request aborted probably because we are being redirected to another page
+						triggerError = false;  // => Don't show the error to the user
+						throw 'Request aborted';
+					}
+
+					// Process response
+					self.processResponseMessage( responseMessage );
+
+					// Polling request went Ok => Reset retry count if any
+					retryCount = 0;
 				}
+				catch( err )
+				{
+					if( self.getStatus() == client.ClientStatus.DISCONNECTED )
+					{
+						// Stopped
+						self.logWarning( 'Polling stopped' );
+						return;
+					}
 
-				// Process response
-				self.processResponseMessage( responseMessage );
-
-				// Polling request went Ok => Reset retry count if any
-				retryCount = 0;
+					if( (++retryCount) < self.errorRetryMax )
+					{
+						// Failed, but need to retry
+						if( triggerError )
+							self.triggerInternalError( `Polling request failed: ${err}` );
+					}
+					else
+					{
+						// Too many fails
+						self.triggerInternalError( `Polling request failed: ${err}` );  // nb: Show the error to the user even if (triggerError == false)
+						return;
+					}
+				}
 			}
-			catch( err )
-			{
-				if( self.getStatus() == client.ClientStatus.DISCONNECTED )
-				{
-					// Stopped
-					self.logWarning( 'Polling stopped' );
-					return;
-				}
-
-				if( (++retryCount) < self.errorRetryMax )
-				{
-					// Failed, but need to retry
-					if( triggerError )
-						self.triggerInternalError( `Polling request failed: ${err}` );
-				}
-				else
-				{
-					// Too many fails
-					self.triggerInternalError( `Polling request failed: ${err}` );  // nb: Show the error to the user even if (triggerError == false)
-					return;
-				}
-			}
+		}
+		catch( err )
+		{
+			self.triggerInternalError( `Poll loop threw an exception: ${err}` );
+			throw err;
+		}
+		finally
+		{
+			// Stopped
+			self.triggerStatusChanged( client.ClientStatus.DISCONNECTED );
 		}
 	}
 
@@ -252,7 +251,8 @@ export class HttpClient extends BaseClient
 		const request = new XMLHttpRequest();
 		request.open( "POST", self.handlerUrl, true );
 		request.setRequestHeader( "Content-Type", "application/x-www-form-urlencoded" );
-
+		if( self.authorizationHeader != null )
+			request.setRequestHeader( 'Authorization', self.authorizationHeader );
 		assignRequest( request );
 		const rv = new Promise<client.Message>( (resolve,reject)=>
 			{
