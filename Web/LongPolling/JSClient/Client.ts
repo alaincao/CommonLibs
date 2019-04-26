@@ -51,14 +51,12 @@ export interface MessageDict extends Message
 
 export interface MessageHandler extends evnt.IEventsHandler
 {
-	start					: ()=>void;
 	getStatus				: ()=>ClientStatus;
 	getSyncedHandlerUrl		: ()=>string;
 	onConnectionIdReceived	: (callback:(connectionId:string)=>void)=>this;
 	onStatusChanged			: (callback:(status:ClientStatus)=>void)=>this;
-	onInternalError			: (callback:(message:string)=>void)=>this;
-	onMessageHandlerFailed	: (callback:(error:any)=>void)=>this;
 	sendMessage				: (message:Message, callback?:(evt:any,message?:Message)=>void)=>this;
+	sendRequest				: <T extends Message>(request:Message)=>Promise<T>;
 }
 
 export enum ClientStatus
@@ -94,8 +92,8 @@ export function Client(p:{	debug?						: boolean,
 							webSocketKeepAliveUrl?		: string,
 							webSocketKeepAliveTimeout?	: number,
 							syncedHandlerUrl?			: string,
-							logoutUrl					: string
-					}) : MessageHandler
+							logoutUrl?					: string
+					}) : BaseClient
 {
 	let canUseSocket : boolean = (p.webSocketHandlerUrl != null);
 	canUseSocket = ( canUseSocket && (typeof(WebSocket) != 'undefined') );

@@ -36,13 +36,14 @@ export abstract class BaseClient implements client.MessageHandler
 	private				connectionId	: string		= null;
 	private				sendMessageUid	: number		= 0;
 
+	public				authorizationHeader	: string;
 	/** Obsolete: Is used by the 'FileUploader' which should not be used anymore */
 	private readonly	syncedHandlerUrl	: string;
 	private	readonly	logoutUrl			: string;
 
 	private				pendingMessages		: { message:client.Message, callback?:(evt?:any,message?:client.Message)=>void }[]	= [];
 
-	public abstract		start()	: void;
+	public abstract		start()	: Promise<void>;
 	public abstract		stop()	: void;
 	protected abstract	send(messages:client.Message[]) : Promise<void>;
 
@@ -52,9 +53,10 @@ export abstract class BaseClient implements client.MessageHandler
 				})
 	{
 		const self = this;
-		this.debug				= (p.debug == true);
-		this.syncedHandlerUrl	= (p.syncedHandlerUrl == null) ? null : p.syncedHandlerUrl;
-		this.logoutUrl			= (p.logoutUrl == null) ? null : p.logoutUrl;
+		this.debug					= (p.debug == true);
+		self.authorizationHeader	= null;
+		this.syncedHandlerUrl		= (p.syncedHandlerUrl == null) ? null : p.syncedHandlerUrl;
+		this.logoutUrl				= (p.logoutUrl == null) ? null : p.logoutUrl;
 
 		if( (typeof(window) != undefined) && (typeof($) != 'undefined') )
 		{
@@ -95,10 +97,26 @@ export abstract class BaseClient implements client.MessageHandler
 		return self;
 	};
 
+	public sendRequest<T extends client.Message>(request:client.Message) : Promise<T>
+	{
+		const self = this;
+		return new Promise<T>( (resolve)=>
+			{
+				self.sendMessage( request, (e,response)=>
+					{
+						resolve( <T>response );
+					} );
+			} );
+	}
+
 	protected receiveMessages(messages:client.Message[]) : void
 	{
 		const self = this;
 
+		if( messages.length == 0 )  // e.g. POLL request returned
+			return;
+
+		self.log( 'message recv', messages );
 		for( let i=0; i<messages.length; ++i )
 		{
 			try
@@ -106,7 +124,6 @@ export abstract class BaseClient implements client.MessageHandler
 				const messageContent = messages[ i ];
 				const type = messageContent[ 'type' ];
 
-				self.log( 'message recv', messageContent );
 				self.trigger( type, messageContent );
 			}
 			catch( err )
@@ -173,13 +190,13 @@ export abstract class BaseClient implements client.MessageHandler
 				}
 
 				messages.push( message );
-				self.log( 'message send', message );
 			}
 			if( messages.length == 0 )
 				return;
 
 			try
 			{
+				self.log( 'message send', messages );
 				await self.send( messages );
 			}
 			finally
@@ -295,6 +312,7 @@ export abstract class BaseClient implements client.MessageHandler
 	protected triggerConnectionIdReceived(connectionId:string) : this
 	{
 		const self = this;
+		self.log( 'message init', connectionId );
 		self.connectionId = connectionId;
 		self.events.trigger( 'commonlibs_message_handler_connection_id_received', connectionId );
 		return self;
