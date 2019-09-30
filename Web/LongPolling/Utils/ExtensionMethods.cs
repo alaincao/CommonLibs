@@ -163,7 +163,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 																									new JsonDictionaryConverter(),  // Serialize JSON dictionaries to 'IDictionary<string,object>' instead of Newtonsoft's 'JObject'
 																								};
 
-		public static string ToJSON(this object obj, IEnumerable<Newtonsoft.Json.JsonConverter> converters=null, bool indented=false)
+		public static string ToJSON(this object obj, IEnumerable<Newtonsoft.Json.JsonConverter> converters=null, bool indented=false, bool ignoreNulls=false)
 		{
 			if( ToJSONConverters != null )
 			{
@@ -175,6 +175,8 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 			var settings = new Newtonsoft.Json.JsonSerializerSettings();
 			settings.Formatting = indented ? Newtonsoft.Json.Formatting.Indented : Newtonsoft.Json.Formatting.None;
+			if( ignoreNulls )
+				settings.NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore;
 			if( converters != null )
 				settings.Converters = converters.ToList();
 			if( ToJSONFirstLetterLowerCased )
