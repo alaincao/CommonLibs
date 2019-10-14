@@ -163,7 +163,10 @@ export class HttpClient extends BaseClient
 					}
 
 					// Process response
-					self.processResponseMessage( responseMessage );
+					var cont = self.processResponseMessage( responseMessage );
+					if(! cont )
+						// Stop polling
+						break;
 
 					// Polling request went Ok => Reset retry count if any
 					retryCount = 0;
@@ -221,7 +224,7 @@ export class HttpClient extends BaseClient
 		self.processResponseMessage( response );
 	}
 
-	private processResponseMessage(rootMessage:client.Message) : void
+	private processResponseMessage(rootMessage:client.Message) : boolean
 	{
 		const self = this;
 
@@ -229,14 +232,15 @@ export class HttpClient extends BaseClient
 		{
 			case 'reset':
 				// Comming from the polling request => Just ignore to restart another request
-				break;
+				return true;
 			case 'logout':
 				// Leave the handling of this to BaseClient
 				self.triggerLogoutReceived();
-				break;
+				// Stop polling
+				return false;
 			case 'messages':
 				self.receiveMessages( (<client.MessageDict>rootMessage).messages );
-				break;
+				return true;
 			default:
 				throw `Unknown response type ${rootMessage.type}' for root message`;
 		}
