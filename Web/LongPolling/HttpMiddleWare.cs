@@ -90,7 +90,7 @@ namespace CommonLibs.Web.LongPolling
 			{
 				RootMessage request;
 				{
-					var json = new StreamReader( context.Request.Body ).ReadToEnd();
+					var json = await( new StreamReader( context.Request.Body ).ReadToEndAsync() );
 					request = RootMessage.CreateServer_RawRequest( json );
 				}
 				response = await connection.ReceiveRequest( context, request );
