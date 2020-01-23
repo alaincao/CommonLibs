@@ -1,5 +1,5 @@
 ﻿//
-// CommonLibs/Web/LongPolling/JSClient/HttpClient.ts
+// CommonLibs/MessagesBroker/JSClient/HttpClient.ts
 //
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
@@ -44,15 +44,13 @@ export class HttpClient extends BaseClient
 
 	constructor(p:{	debug?				: boolean,
 					handlerUrl			: string,	// Required: The URL of the server's WebSocket listener
-					syncedHandlerUrl?	: string,	// Optional: The URL to the Synced HTTP handler if used (e.g. file uploads)
-					logoutUrl?			: string,	// Optional: The URL to redirect to when the server asks to logout
 					errorRetryMax?		: number,	// Optional: The number of connection try before stopping the pollings
 				})
 	{
-		super({ debug:p.debug, syncedHandlerUrl:p.syncedHandlerUrl, logoutUrl:p.logoutUrl });
+		super({ debug:p.debug });
 
 		this.handlerUrl		= (p.handlerUrl == null) ? 'HANDLER_URL_UNDEFINED' : p.handlerUrl;
-		this.errorRetryMax	= (p.errorRetryMax == null) ? 10 : p.errorRetryMax;
+		this.errorRetryMax	= (p.errorRetryMax == null) ? 5 : p.errorRetryMax;
 	}
 
 	public /*override*/ async start() : Promise<void>
@@ -124,9 +122,6 @@ export class HttpClient extends BaseClient
 		{
 			case 'init':
 				break;
-			case 'logout':
-				self.triggerLogoutReceived();
-				throw 'Init request rejected by server';
 			default:
 				throw `Unknown response type '${response.type}'`;
 		}
@@ -233,11 +228,6 @@ export class HttpClient extends BaseClient
 			case 'reset':
 				// Comming from the polling request => Just ignore to restart another request
 				return true;
-			case 'logout':
-				// Leave the handling of this to BaseClient
-				self.triggerLogoutReceived();
-				// Stop polling
-				return false;
 			case 'messages':
 				self.receiveMessages( (<client.MessageDict>rootMessage).messages );
 				return true;

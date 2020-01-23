@@ -1,5 +1,5 @@
 ﻿//
-// CommonLibs/Web/LongPolling/JSClient/Client.ts
+// CommonLibs/MessagesBroker/JSClient/Client.ts
 //
 // Author:
 //   Alain CAO (alain.cao@sigmaconso.com)
@@ -26,22 +26,20 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-import * as evnt from '../../../Utils/Event/JS/EventsHandler';
-import * as sock from './WebSocketClient';
+import * as evnt from '../../Utils/Event/JS/EventsHandler';
 import * as http from './HttpClient';
 import BaseClient from './BaseClient';
 
-export { IEventsHandler as EventsHandler } from '../../../Utils/Event/JS/EventsHandler';
+export { IEventsHandler as EventsHandler } from '../../Utils/Event/JS/EventsHandler';
 
 export var HttpClient = http.HttpClient;
-export var WebSocketClient = sock.WebSocketClient;
 
 export interface Message
 {
-	type				: string;
+	type?				: string;
 	reply_to_type?		: string;
 	sender?				: string;
-	chained_messages?	: Message[];
+	receiver?			: string;
 }
 // Use this when members are not to be strictly enforced (behaves as a regular dictionary):
 export interface MessageDict extends Message
@@ -52,7 +50,6 @@ export interface MessageDict extends Message
 export interface MessageHandler extends evnt.IEventsHandler
 {
 	getStatus				: ()=>ClientStatus;
-	getSyncedHandlerUrl		: ()=>string;
 	onConnectionIdReceived	: (callback:(connectionId:string)=>void)=>this;
 	onStatusChanged			: (callback:(status:ClientStatus)=>void)=>this;
 	sendMessage				: (message:Message, callback?:(evt:any,message?:Message)=>void)=>this;
@@ -88,15 +85,8 @@ export function createEventHandler() : evnt.IEventsHandler
 
 export function Client(p:{	debug?						: boolean,
 							httpHandlerUrl?				: string,
-							webSocketHandlerUrl?		: string,
-							webSocketKeepAliveUrl?		: string,
-							webSocketKeepAliveTimeout?	: number,
-							syncedHandlerUrl?			: string,
-							logoutUrl?					: string
 					}) : BaseClient
 {
-	let canUseSocket : boolean = (p.webSocketHandlerUrl != null);
-	canUseSocket = ( canUseSocket && (typeof(WebSocket) != 'undefined') );
 	const canUseHttp : boolean = (p.httpHandlerUrl != null);
 
 	if( p.debug )
@@ -108,13 +98,9 @@ export function Client(p:{	debug?						: boolean,
 	}
 
 	let client : BaseClient;
-	if( canUseSocket )
+	if( canUseHttp )
 	{
-		client = new sock.WebSocketClient({ debug:p.debug, handlerUrl:p.webSocketHandlerUrl, syncedHandlerUrl:p.syncedHandlerUrl, keepAliveUrl:p.webSocketKeepAliveUrl, keepAliveTimeout:p.webSocketKeepAliveTimeout, logoutUrl:p.logoutUrl });
-	}
-	else if( canUseHttp )
-	{
-		client = new http.HttpClient({ debug:p.debug, handlerUrl:p.httpHandlerUrl, syncedHandlerUrl:p.syncedHandlerUrl, logoutUrl:p.logoutUrl });
+		client = new http.HttpClient({ debug:p.debug, handlerUrl:p.httpHandlerUrl });
 	}
 	else
 	{

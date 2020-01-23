@@ -1,5 +1,5 @@
-﻿//
-// CommonLibs/Web/LongPolling/IConnection.cs
+//
+// CommonLibs/Web/LongPolling/Utils/ExtensionMethods.cs
 //
 // Author:
 //   Alain CAO (alaincao17@gmail.com)
@@ -26,23 +26,28 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Web;
-
-namespace CommonLibs.Web.LongPolling
+namespace CommonLibs.MessagesBroker
 {
-	public interface IConnection
+	public static class MessageKeys
 	{
-		string			SessionID					{ get; }
-		string			ConnectionID				{ get; }
-		bool			Sending						{ get; set; }
+		public const string		KeyMessageHandler				= "type";
+		public const string		KeyMessageResponseHandler		= "reply_to_type";
+		public const string		KeySenderID						= "sender";
+		public const string		KeyReceiverID					= "receiver";
+		public const string		KeyMessageException				= "exception";
+		public const string		KeyMessageExceptionMessage			= "message";
+		public const string		KeyMessageExceptionClass			= "class";
+		public const string		KeyMessageExceptionStackTrace		= "stack";
+	}
 
-		/// <summary>Explicitely close this connection</summary>
-		void Close(RootMessage rootMessage);
-
-		/// <summary>Send message to peer</summary>
-		void			SendRootMessage(RootMessage rootMessage);
+	public static class RootMessageKeys
+	{
+		public const string	KeyType				= "type";
+		public const string	TypeInit				= "init";
+		public const string	TypePoll				= "poll";
+		public const string	TypeMessages			= "messages";
+		public const string	TypeReset				= "reset";
+		public const string	KeySenderID			= MessageKeys.KeySenderID;  // NB: use the same
+		public const string	KeyMessageMessages	= "messages";
 	}
 }

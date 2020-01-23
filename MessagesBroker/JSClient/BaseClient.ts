@@ -1,5 +1,5 @@
 //
-// CommonLibs/Web/LongPolling/JSClient/BaseClient.ts
+// CommonLibs/MessagesBroker/JSClient/BaseClient.ts
 //
 // Author:
 //   Alain CAO (alain.cao@sigmaconso.com)
@@ -37,9 +37,6 @@ export abstract class BaseClient implements client.MessageHandler
 	private				sendMessageUid	: number		= 0;
 
 	public				authorizationHeader	: string;
-	/** Obsolete: Is used by the 'FileUploader' which should not be used anymore */
-	private readonly	syncedHandlerUrl	: string;
-	private	readonly	logoutUrl			: string;
 
 	private				pendingMessages		: { message:client.Message, callback?:(evt?:any,message?:client.Message)=>void }[]	= [];
 
@@ -47,16 +44,11 @@ export abstract class BaseClient implements client.MessageHandler
 	public abstract		stop()	: void;
 	protected abstract	send(messages:client.Message[]) : Promise<void>;
 
-	constructor(p:{	debug?				: boolean,
-					syncedHandlerUrl?	: string,	// Optional: The URL to the Synced HTTP handler if used (e.g. file uploads)
-					logoutUrl			: string,	// Optional: The URL to redirect to when the server asks to logout
-				})
+	constructor(p:{	debug?:boolean })
 	{
 		const self = this;
 		this.debug					= (p.debug == true);
 		self.authorizationHeader	= null;
-		this.syncedHandlerUrl		= (p.syncedHandlerUrl == null) ? null : p.syncedHandlerUrl;
-		this.logoutUrl				= (p.logoutUrl == null) ? null : p.logoutUrl;
 
 		if( (typeof(window) != undefined) && (typeof($) != 'undefined') )
 		{
@@ -252,11 +244,6 @@ export abstract class BaseClient implements client.MessageHandler
 		console.warn.apply( console, arguments );
 	}
 
-	public getSyncedHandlerUrl() : string
-	{
-		return this.syncedHandlerUrl;
-	}
-
 	public getStatus() : client.ClientStatus
 	{
 		return this.status;
@@ -334,28 +321,6 @@ export abstract class BaseClient implements client.MessageHandler
 			callback( self.connectionId );
 		}
 
-		return self;
-	}
-
-	protected triggerLogoutReceived() : this
-	{
-		const self = this;
-
-		if( self.logoutUrl != null )
-			window.location.href = self.logoutUrl;
-		else
-			self.events.trigger( 'message_handler_logout_received' );
-
-		return self;
-	}
-	public onLogoutReceived(callback:()=>void) : this
-	{
-		const self = this;
-		self.events.bind( 'message_handler_logout_received', function(evt,dummy:any)
-			{
-				try { callback(); }
-				catch(err) { self.triggerInternalError( 'Error while invoking message_handler_logout_received event: '+err ); }
-			} );
 		return self;
 	}
 

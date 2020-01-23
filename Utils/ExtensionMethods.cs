@@ -29,7 +29,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 
 namespace CommonLibs.Utils
 {
@@ -93,6 +92,150 @@ namespace CommonLibs.Utils
 			return -1;
 		}
 
+		public static object TryGetValue(this IDictionary<string,object> dict, string key)
+		{
+			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'this' parameter" );
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(key), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'key'" );  // Assuming null or "" is a sign of an error
+			object obj = null;
+			if(! dict.TryGetValue(key, out obj) )
+				return null;
+			return obj;
+		}
+
+		public static string TryGetString(this IDictionary<string,object> dict, string key)
+		{
+			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'this' parameter" );
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(key), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'key'" );  // Assuming null or "" is a sign of an error
+			object obj;
+			if(! dict.TryGetValue(key, out obj) )
+				return null;
+			return "" + obj;
+		}
+
+		public static byte? TryGetByte(this IDictionary<string,object> dict, string key)
+		{
+			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'this' parameter" );
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(key), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'key'" );  // Assuming null or "" is a sign of an error
+			object obj;
+			if(! dict.TryGetValue(key, out obj) )
+				return null;
+			var a = obj as byte?;
+			if( a != null )
+				return a.Value;
+			byte b;
+			if( byte.TryParse(""+obj, out b) )
+				return b;
+			else
+				return null;
+		}
+
+		public static short? TryGetShort(this IDictionary<string,object> dict, string key)
+		{
+			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'this' parameter" );
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(key), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'key'" );  // Assuming null or "" is a sign of an error
+			object obj;
+			if(! dict.TryGetValue(key, out obj) )
+				return null;
+			var a = obj as short?;
+			if( a != null )
+				return a.Value;
+			short b;
+			if( short.TryParse(""+obj, out b) )
+				return b;
+			else
+				return null;
+		}
+
+		public static int? TryGetInt(this IDictionary<string,object> dict, string key)
+		{
+			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'this' parameter" );
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(key), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'key'" );  // Assuming null or "" is a sign of an error
+			object obj;
+			if(! dict.TryGetValue(key, out obj) )
+				return null;
+			var a = obj as int?;
+			if( a != null )
+				return a.Value;
+			int b;
+			if( int.TryParse(""+obj, out b) )
+				return b;
+			else
+				return null;
+		}
+
+		public static long? TryGetLong(this IDictionary<string,object> dict, string key)
+		{
+			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'this' parameter" );
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(key), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'key'" );  // Assuming null or "" is a sign of an error
+			object obj;
+			if(! dict.TryGetValue(key, out obj) )
+				return null;
+			var a = obj as long?;
+			if( a != null )
+				return a.Value;
+			long b;
+			if( long.TryParse(""+obj, out b) )
+				return b;
+			else
+				return null;
+		}
+
+		public static bool? TryGetBool(this IDictionary<string,object> dict, string key)
+		{
+			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing 'this' parameter" );
+			CommonLibs.Utils.Debug.ASSERT( !string.IsNullOrEmpty(key), System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'key'" );  // Assuming null or "" is a sign of an error
+
+			object obj;
+			if(! dict.TryGetValue(key, out obj) )
+				return null;
+			var a = obj as bool?;
+			return a;
+		}
+
+		public static T NewAnonymousType<T>(this T templateObject)
+		{
+			return default(T);
+		}
+
+		public static IQueryable<T> NewAnonymousQueryable<T>(this T templateObject)
+		{
+			return (new T[]{}).AsQueryable();
+		}
+
+		public static IEnumerable<T> NewAnonymousEnumerable<T>(this T templateObject, bool fillWithTemplate=false)
+		{
+			if( fillWithTemplate )
+				return new T[]{ templateObject };
+			else
+				return (new T[]{}).AsEnumerable();
+		}
+
+		public static T[] NewAnonymousArray<T>(this T templateObject)
+		{
+			return new T[]{};
+		}
+
+		public static List<T> NewAnonymousList<T>(this T templateObject)
+		{
+			return new List<T>();
+		}
+
+		public static List<T> NewAnonymousListFromEnumerable<T>(this IEnumerable<T> templateObject)
+		{
+			return new List<T>();
+		}
+
+		public static Dictionary<K,T> NewAnonymousDictionary<T,K>(this T templateObject, K templateKey)
+		{
+			return new Dictionary<K,T>();
+		}
+
+		public static void AddRange<K,V>(this IDictionary<K,V> self, IDictionary<K,V> other)
+		{
+			foreach( var pair in other )
+				self[ pair.Key ] = pair.Value;
+		}
+
 		public static int? TryGet<K>(this IDictionary<K,int> dict, K key)
 		{
 			CommonLibs.Utils.Debug.ASSERT( dict != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'this'" );
@@ -147,6 +290,21 @@ namespace CommonLibs.Utils
 			src.CopyTo( rv, dstStartIndex:0, srcStartIndex:srcStartIndex, n:srcCount );
 			dst.CopyTo( rv, dstStartIndex:srcCount, srcStartIndex:dstStartIndex, n:dstCount );
 			return rv;
+		}
+
+		/// <summary>Use on Tasks that are not awaited</summary>
+		public static void FireAndForget(this System.Threading.Tasks.Task task)
+		{
+		#if DEBUG
+
+			// Check if any exception occurred
+			task.ContinueWith( (_)=>
+				{
+					if( task.Exception != null )
+						CommonLibs.Utils.Debug.ASSERT( false, nameof(FireAndForget), $"An async task that was not awaited threw an exception ({task.Exception.GetType().FullName}): {task.Exception.Message}" );
+				} );
+
+		#endif
 		}
 	}
 }

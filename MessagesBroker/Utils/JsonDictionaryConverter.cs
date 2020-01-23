@@ -1,5 +1,5 @@
 //
-// CommonLibs/Web/LongPolling/JSClient/WebSocketClient.ts
+// CommonLibs/MessagesBroker/JsonDictionaryConverter.cs
 //
 // Author:
 //   Alain CAO (alain.cao@sigmaconso.com)
@@ -32,7 +32,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace CommonLibs.Web.LongPolling.Utils
+namespace CommonLibs.MessagesBroker.Utils
 {
 	/// <summary>
 	/// Converter for Newtonsoft's serializer to use 'IDictionary<string, object>' instead of Newtonsoft's 'JObject's
