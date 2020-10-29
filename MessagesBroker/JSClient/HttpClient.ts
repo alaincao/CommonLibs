@@ -38,6 +38,7 @@ export class HttpClient extends BaseClient
 {
 	private	readonly handlerUrl		: string;
 	private readonly errorRetryMax	: number;
+	public readonly  initMessage	: {[key:string]:any};
 
 	private pollingRequest	: XMLHttpRequest	= null;
 	private messageRequest	: XMLHttpRequest	= null;
@@ -45,12 +46,18 @@ export class HttpClient extends BaseClient
 	constructor(p:{	debug?				: boolean,
 					handlerUrl			: string,	// Required: The URL of the server's WebSocket listener
 					errorRetryMax?		: number,	// Optional: The number of connection try before stopping the pollings
+					initMessageTemplate?: {[key:string]:any},
 				})
 	{
 		super({ debug:p.debug });
+		const self = this;
 
 		this.handlerUrl		= (p.handlerUrl == null) ? 'HANDLER_URL_UNDEFINED' : p.handlerUrl;
 		this.errorRetryMax	= (p.errorRetryMax == null) ? 5 : p.errorRetryMax;
+
+		this.initMessage = { type: 'init' };
+		if( p.initMessageTemplate != null )
+			Object.keys( p.initMessageTemplate ).forEach( (key)=>self.initMessage[key] = p.initMessageTemplate[key] );
 	}
 
 	public /*override*/ async start() : Promise<void>
@@ -114,8 +121,7 @@ export class HttpClient extends BaseClient
 	{
 		const self = this;
 
-		const message : RootMessage = { type: 'init' };
-		const response = await self.sendHttpRequest( ()=>{}, message );
+		const response = await self.sendHttpRequest( ()=>{}, self.initMessage );
 		if( response == null )
 			throw 'Init request failed';
 		switch( response.type )

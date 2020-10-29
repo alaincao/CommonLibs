@@ -34,11 +34,13 @@ namespace CommonLibs.MessagesBroker
 	public static partial class JSClient
 	{
 		/// <param name="httpHandlerUrl">The URL of the http handler that implement 'LongPollingHandler'</param>
-		public static IDictionary<string,object> CreateClientParameters(Func<string,string> resolveUrl, string httpHandlerUrl=null, bool? debug=false)
+		public static IDictionary<string,object> CreateClientParameters(Func<string,string> resolveUrl, string httpHandlerUrl=null, object initMessageTemplate=null, bool? debug=false)
 		{
 			var dict = new Dictionary<string,object>();
 			if( httpHandlerUrl != null )
 				dict["httpHandlerUrl"] = resolveUrl( httpHandlerUrl );
+			if( initMessageTemplate != null )
+				dict["initMessageTemplate"] = initMessageTemplate;
 			if( debug == true )
 				dict["debug"] = debug;
 			return dict;

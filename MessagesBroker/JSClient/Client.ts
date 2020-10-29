@@ -85,6 +85,7 @@ export function createEventHandler() : evnt.IEventsHandler
 
 export function Client(p:{	debug?						: boolean,
 							httpHandlerUrl?				: string,
+							initMessageTemplate?		: {[key:string]:any},
 					}) : BaseClient
 {
 	const canUseHttp : boolean = (p.httpHandlerUrl != null);
@@ -100,7 +101,7 @@ export function Client(p:{	debug?						: boolean,
 	let client : BaseClient;
 	if( canUseHttp )
 	{
-		client = new http.HttpClient({ debug:p.debug, handlerUrl:p.httpHandlerUrl });
+		client = new http.HttpClient({ debug:p.debug, handlerUrl:p.httpHandlerUrl, initMessageTemplate:p.initMessageTemplate });
 	}
 	else
 	{

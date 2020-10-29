@@ -16,28 +16,33 @@ namespace CommonLibs.MessagesBroker.CSClient
 		private const string	RootMessageType_Logout		= "logout";  // Was used by legacy versions of the server (ie. the LongPolling one) ; Keep it here for compatibility
 
 		public readonly string						HandlerUrl;
+		public readonly TMessage					InitMessage;
 		public readonly System.Net.CookieContainer	Cookies;
 		private System.Net.Http.HttpClient			PollClient			= null;
 
 		/// <param name="cookies">Contains the ASP.NET session cookie</param>
-		private HttpClient(string handlerUrl, System.Net.CookieContainer cookies, IMessageReceiver messageReceiver=null) : base(messageReceiver)
+		private HttpClient(string handlerUrl, System.Net.CookieContainer cookies, IMessageReceiver messageReceiver=null, TMessage initMessageTemplate=null) : base(messageReceiver)
 		{
 			ASSERT( !string.IsNullOrWhiteSpace(handlerUrl), $"Missing parameter '{nameof(handlerUrl)}'" );
 			ASSERT( cookies != null, $"Missing parameter '{nameof(cookies)}'" );
 
 			HandlerUrl = handlerUrl;
 			Cookies = cookies;
+
+			InitMessage = CreateRootMessage_Init();
+			if( initMessageTemplate != null )
+				foreach( var pair in initMessageTemplate )
+					InitMessage[ pair.Key ] = pair.Value;
 		}
 
-		public static Task<HttpClient> New(string handlerUrl, System.Net.CookieContainer cookies, IMessageReceiver messageReceiver=null)
+		public static Task<HttpClient> New(string handlerUrl, System.Net.CookieContainer cookies, IMessageReceiver messageReceiver=null, TMessage initMessageTemplate=null)
 		{
-			return Task.FromResult( new HttpClient(handlerUrl, cookies, messageReceiver) );
+			return Task.FromResult( new HttpClient(handlerUrl, cookies, messageReceiver, initMessageTemplate) );
 		}
 
 		protected async internal override Task<string> SendInitMessage()
 		{
-			var initMessage = CreateRootMessage_Init();
-			var response = await SendHttpRequest( initMessage, isPollConnection:false );
+			var response = await SendHttpRequest( InitMessage, isPollConnection:false );
 
 			var connectionID = response.TryGetString( RootMessageKeys.KeySenderID );
 			if( string.IsNullOrWhiteSpace(connectionID) )
