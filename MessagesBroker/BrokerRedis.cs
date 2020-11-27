@@ -37,20 +37,36 @@ using CommonLibs.MessagesBroker.Utils;
 namespace CommonLibs.MessagesBroker
 {
 	using TMessage = IDictionary<string,object>;
+	using CMessage = Dictionary<string,object>;
 
 	public class BrokerRedis : BrokerBase
 	{
-		public ConnectionMultiplexer	Connection						{ get; }
+		public ConnectionMultiplexer	Connection						{ get; private set; }
 		public string					KeysPrefix						{ get; } = "";
 
-		public BrokerRedis(string connectionString, string keysPrefix=null)
+		/// <summary>Update to change the default serialization method (JSON) of the messages in the Redis database</summary>
+		/// <remarks>'DeserializeMessages' must be updated accordingly</remarks>
+		public Func<List<TMessage>,string>	SerializeMessages;
+		/// <summary>Update to change the default deserialization method (JSON) of the messages in the Redis database</summary>
+		/// <remarks>'SerializeMessages' must be updated accordingly</remarks>
+		public Func<string,List<CMessage>>	DeserializeMessages;
+
+		public BrokerRedis(string keysPrefix=null)
+		{
+			KeysPrefix = (keysPrefix == null) ? KeysPrefix : keysPrefix;
+
+			SerializeMessages	= (messages)=>messages.ToJSON();
+			DeserializeMessages	= (str)=>str.FromJSON<List<CMessage>>();
+		}
+
+		public Task Start(string connectionString)
 		{
 			ASSERT( !string.IsNullOrWhiteSpace(connectionString), $"Missing parameter '{nameof(connectionString)}'" );
 
 			Connection = ConnectionMultiplexer.Connect( connectionString );
-			KeysPrefix = (keysPrefix == null) ? KeysPrefix : keysPrefix;
 
 			LaunchSubscribe();
+			return Task.CompletedTask;
 		}
 
 		private void LaunchSubscribe()
@@ -83,11 +99,11 @@ namespace CommonLibs.MessagesBroker
 			ASSERT( !string.IsNullOrWhiteSpace(endPointID), $"Missing parameter '{nameof(endPointID)}'" );
 			ASSERT( (messages != null) && (messages.Count > 0), $"Missing parameter '{nameof(messages)}'" );
 			var key = $"{KeysPrefix}{endPointID}";
-			var json = messages.ToJSON();
+			var value = SerializeMessages( messages );
 			var db = Connection.GetDatabase();
 
 			var tr = db.CreateTransaction();
-			var t_lrp = tr.ListRightPushAsync( key, json );
+			var t_lrp = tr.ListRightPushAsync( key, value );
 			var t_ke = tr.KeyExpireAsync( key, new TimeSpan(hours:0, minutes:0, seconds:MessagesExpireSeconds) );
 
 			var rc = await tr.ExecuteAsync();
@@ -110,11 +126,11 @@ namespace CommonLibs.MessagesBroker
 			ASSERT( rc, $"Failed to get messages' from Redis'" );
 			await Task.WhenAll( new Task[]{ t_d } );
 
-			var jsons = await t_lr;
+			var values = await t_lr;
 			var list = new List<TMessage>();
-			foreach( var json in jsons )
+			foreach( string str in values )
 			{
-				var l = json.ToString().FromJSON<List<Dictionary<string,object>>>();
+				var l = DeserializeMessages( str );
 				foreach( var dict in l )
 					list.Add( NewMessage(dict) );
 			}
