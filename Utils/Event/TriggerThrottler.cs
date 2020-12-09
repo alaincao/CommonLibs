@@ -68,6 +68,10 @@ namespace CommonLibs.Utils.Event
 
 			lock( LockObject )
 			{
+				if( (! fromTimer) && (Timer != null) )
+					// Throttling launched in the mean-time (very unlikely) => Discard
+					goto DISCARD;
+
 				var now = DateTime.UtcNow.Ticks;
 
 				if( fromTimer )
