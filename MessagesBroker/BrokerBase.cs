@@ -48,6 +48,15 @@ namespace CommonLibs.MessagesBroker
 		[System.Diagnostics.Conditional("DEBUG")] protected void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] protected void FAIL(string message)				{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
+		public class EndpointAlreadyRegistered : ApplicationException
+		{
+			public readonly IEndPoint	EndPoint;
+			internal EndpointAlreadyRegistered(string message, IEndPoint endPoint) : base(message)
+			{
+				EndPoint = endPoint;
+			}
+		}
+
 		public const int				DefaultMessagesExpireSeconds	= 30;
 
 		private EndPointsDict			RegisteredEndpoints				{ get; } = new EndPointsDict();
@@ -70,6 +79,17 @@ namespace CommonLibs.MessagesBroker
 		{
 			ASSERT( (endPoint != null) && (!string.IsNullOrWhiteSpace(endPoint.ID)), $"Missing or invalid parameter '{nameof(endPoint)}'" );
 
+			Action checkExisting = ()=>
+				{
+					var existing = RegisteredEndpoints.TryGet( endPoint.ID );  // nb: read-only => no need for "lock{}"
+					if( existing == null )
+						// OK
+						return;
+					// Not OK
+					throw new EndpointAlreadyRegistered( $"The endpoint '{endPoint.ID}' has already been registered", existing );
+				};
+			checkExisting();
+
 			if( endPoint.IsOneShot )
 			{
 				// Check pending messages
@@ -85,6 +105,7 @@ namespace CommonLibs.MessagesBroker
 					// Register endpoint
 					lock( Locker )
 					{
+						checkExisting();
 						RegisteredEndpoints.Add( endPoint.ID, endPoint );
 					}
 
@@ -97,6 +118,7 @@ namespace CommonLibs.MessagesBroker
 				// Register endpoint
 				lock( Locker )
 				{
+					checkExisting();
 					RegisteredEndpoints.Add( endPoint.ID, endPoint );
 				}
 

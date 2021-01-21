@@ -152,6 +152,13 @@ namespace CommonLibs.MessagesBroker
 			MessagesQueueItem queue;
 			lock( Locker )
 			{
+				// Check if an existing one is already registered
+				{
+					var existing = EndPoints.TryGet( id );
+					if( existing != null )
+						throw new BrokerBase.EndpointAlreadyRegistered( $"The endpoint '{id}' has already been registered", existing );
+				}
+
 				// Are there any messages in the queue ?
 				queue = MessagesQueues.TryGet( id );
 				if( queue != null )
@@ -164,7 +171,7 @@ namespace CommonLibs.MessagesBroker
 				}
 
 				// Register endpoint
-				EndPoints[ id ] = endPoint;
+				EndPoints.Add( id, endPoint );
 			BREAK:;
 			}
 

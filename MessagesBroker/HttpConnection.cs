@@ -108,11 +108,28 @@ namespace CommonLibs.MessagesBroker
 					var staleTimeout = Task.Run( async ()=>  // nb: Run asynchroneously
 						{
 							await Task.Delay( StaleTimeoutMilisec, staleCancellation.Token );
-							ResetNow();
+							await ResetNow();
 						} );
 
 					// Register against the broker
-					await Broker.RegisterEndpoint( this );
+					try
+					{
+						await Broker.RegisterEndpoint( this );
+					}
+					catch( BrokerBase.EndpointAlreadyRegistered ex )
+					{
+						// This connection has already been registered?
+						// CAN happen when the browser resets the polling connection (e.g. when typing 'ctrl+s' to save the page, all active requests are interrupted)
+						// and the client restart the connection immediately.
+						// But this should not happen often ; If it does, something's wrong
+						FAIL( $"Connection '{this.ID}' has already been registered" );
+
+						// Unregister previous one
+						await ( (HttpConnection<THttpContext>)ex.EndPoint ).ResetNow();
+
+						// Retry register (ie. should succeed ...)
+						await Broker.RegisterEndpoint( this );
+					}
 
 					// Wait for any messages to send through this connection
 					var response = await completionSource.Task;
@@ -204,9 +221,9 @@ namespace CommonLibs.MessagesBroker
 			completionSource.SetResult( response );
 		}
 
-		public void ResetNow()
+		public async Task ResetNow()
 		{
-			Broker.UnRegisterEndpoint( ID );
+			await Broker.UnRegisterEndpoint( ID );
 
 			var completionSource = System.Threading.Interlocked.Exchange( ref CompletionSource, null );
 			if( completionSource == null )
