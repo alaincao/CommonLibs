@@ -123,5 +123,31 @@ namespace CommonLibs.Utils
 			}
 			return await tcs.Task;
 		}
+
+		public async Task<T[]> PopAvailable()
+		{
+			TaskCompletionSource<T> tcs;
+			lock( Locker )
+			{
+				if( Queue.Count > 0 )
+				{
+					// Items ready => Get them and bail out immediately
+					var items = Queue.ToArray();
+					Queue.Clear();
+					return items;
+				}
+
+				if( TCS != null )
+				{
+					// Another consumer is already waiting ?
+					FAIL( $"AsyncQueue: Only one consumer is supported" );  // if this is required, the 'TCS' property should be transformed to a list(queue?) ...
+					throw new InvalidOperationException( $"AsyncQueue: Only one consumer is supported" );
+				}
+
+				// Adding 'TCS' to declare I am waiting for something
+				TCS = tcs = new TaskCompletionSource<T>();
+			}
+			return new T[]{ await tcs.Task };  // TODO: If multiple items were pushed, only the first one will be returned here => Find a way for the TCS to return 1 (ie. Pop() ) or multiple (ei. PopAvailable() ) items
+		}
 	}
 }
