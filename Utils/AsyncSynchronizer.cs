@@ -34,7 +34,7 @@ namespace CommonLibs.Utils
 	/// <summary>Can be used with async/await paradigms in place of "lock{}" blocks</summary>
 	public class AsyncSynchronizer
 	{
-		private AsyncQueue<Tuple<TaskCompletionSource<bool>,Func<Task>>>	Queue		= new AsyncQueue<Tuple<TaskCompletionSource<bool>,Func<Task>>>();
+		private readonly AsyncQueue<Tuple<TaskCompletionSource<object>,Func<Task<object>>>>		Queue		= new AsyncQueue<Tuple<TaskCompletionSource<object>,Func<Task<object>>>>();
 
 		public AsyncSynchronizer()
 		{
@@ -45,11 +45,21 @@ namespace CommonLibs.Utils
 		public async Task Run(Func<Task> callback)
 		{
 			// Push the callback in the queue
-			var tcs = Tuple.Create( new TaskCompletionSource<bool>(), callback );
+			var tcs = Tuple.Create( new TaskCompletionSource<object>(), new Func<Task<object>>(async ()=>{ await callback(); return /*dummy*/false; }) );
 			await Queue.Push( tcs );
 
 			// Wait for the callbak to be executed in 'Loop()'
 			await tcs.Item1.Task;
+		}
+
+		public async Task<T> Run<T>(Func<Task<T>> callback)
+		{
+			// Push the callback in the queue
+			var tcs = Tuple.Create( new TaskCompletionSource<object>(), new Func<Task<object>>(async ()=>(object) await callback()) );
+			await Queue.Push(tcs);
+
+			// Wait for the callbak to be executed in 'Loop()'
+			return (T)await tcs.Item1.Task;
 		}
 
 		/// <summary>The one and only loop to run the callbacks</summary>
@@ -61,10 +71,10 @@ namespace CommonLibs.Utils
 				try
 				{
 					// Run callback
-					await item.Item2();
+					var rv = await item.Item2();
 
 					// Notify 'Loop()' the next item in the queue can be porocessed
-					item.Item1.SetResult( /*dummy*/true );
+					item.Item1.SetResult( rv );
 				}
 				catch( System.Exception ex )
 				{
