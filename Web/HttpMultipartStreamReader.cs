@@ -31,7 +31,9 @@ using System.Collections.Generic;
 using System.Text;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Web;
+
+using Microsoft.AspNetCore.Http;
+using Microsoft.Net.Http.Headers;
 
 using CommonLibs.Utils;
 
@@ -51,13 +53,14 @@ namespace CommonLibs.Web
 		}
 		private States								State						= States.Initial;
 
-		private Encoding							ContentEncoding;
-		private string								ContentType;
+		public readonly Encoding					ContentEncoding;
+		public readonly string						ContentType;
 		private byte[]								ContentBoundaryInitial;
 		private byte[]								ContentBoundary;
+		public string								ContentBoundaryString		=> Encoding.ASCII.GetString( ContentBoundaryInitial );
 
 		/// <remarks>Only available when running from ProcessRequest()</remarks>
-		public long									ContentLength				{ get; private set; }
+		public readonly long						ContentLength;
 		public long									CurrentLength				{ get; private set; }
 
 		private byte[]								PendingBuffer				= null;
@@ -98,12 +101,10 @@ namespace CommonLibs.Web
 
 		public HtmlPostedMultipartStreamParser(HttpRequest request)
 		{
-			ContentEncoding = request.ContentEncoding;
 			ContentType = request.ContentType;
-			ContentLength = request.ContentLength;
-			if( ContentLength == 0 )
-				// Happens when uploaded file size > ~2G (when ContentLength > int.MaxInt, browsers sends invalid negative ContentSize)
-				ContentLength = -1;  // NB: Setting to -1 so that 'bytesRead == contentLength' below doesn't match
+			ContentEncoding = MediaTypeHeaderValue.Parse( ContentType ).Encoding ?? Encoding.GetEncoding( "ISO-8859-1" );  // Fallsback to default as described here: https://www.w3.org/International/articles/http-charset/index
+			ContentLength = request.ContentLength ?? -1;  // Can happen when uploaded file size > ~2G (when ContentLength > int.MaxInt, browsers sends invalid negative ContentSize)
+														  // NB: Setting to -1 so that 'bytesRead == contentLength' below never match
 
 			if(! ContentType.Contains("multipart/form-data") )
 				throw new ArgumentException( "POSTed form data is not of type 'multipart/form-data'" );
@@ -115,42 +116,22 @@ namespace CommonLibs.Web
 			ContentBoundary = CRLF.Concat( ContentBoundaryInitial );  // The ContentBoundaries are prefixed with CR/LF (except for the first(initial) one)
 		}
 
-		/// <summary>
-		/// Read from the context's posted HTTP stream
-		/// </summary>
-		/// <param name="context">The HTTP request's context</param>
-		/// <remarks>Will read directly from the underlying HttpWorkerRequest. So the context is short-circtuited and cannot be reused after calling this method (the Request object will not be complete)</remarks>
-		public async Task ProcessContext(HttpContext context)
-		{
-			// Get the underlying worker request
-			//var worker = (HttpWorkerRequest)context.GetType().GetProperty( "WorkerRequest", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic ).GetValue( context, null );
-			var worker = (HttpWorkerRequest)((IServiceProvider)context).GetService( typeof(HttpWorkerRequest) );
+		public Task ProcessContext(HttpContext context)
+			=> ProcessRequest( context.Request );
 
+		/// <summary>
+		/// Read from the HTTP request's posted stream
+		/// </summary>
+		/// <param name="request">The HTTP request to read from</param>
+		public async Task ProcessRequest(HttpRequest request)
+		{
 			int bufferSize = 1024 * 1024;  // NB: No need to parametrize that since TCP packets generally arrives at 8k each => bufferSize should always be > n below
 			var buffer = new byte[bufferSize];
-
-			var preloadedBuffer = worker.GetPreloadedEntityBody();
-			if( preloadedBuffer != null )
-				await ReceivePostedData( preloadedBuffer, preloadedBuffer.Length );
-
-			long bytesRead = preloadedBuffer != null ? preloadedBuffer.Length : 0;
-			//if(! worker.IsEntireEntityBodyIsPreloaded() )   <= Bugs when browser does not provide request length (when upload size >2Gb)
+			CurrentLength = 0;
+			for( var n=await request.Body.ReadAsync(buffer); n>0; n=await request.Body.ReadAsync(buffer) )
 			{
-				while( true )
-				{
-					if( bytesRead == ContentLength )
-						// ContentLength reached
-						break;
-					int n = worker.ReadEntityBody( buffer, bufferSize );  // TODO: 'worker.ReadEntityBody()' with async/await
-					if( n == 0 )
-						// Nothing has been read from HTTP stream => Socket closed?
-						break;
-					bytesRead += n;
-
-					await ReceivePostedData( buffer, n );
-
-					CurrentLength = bytesRead;
-				}
+				await ReceivePostedData( buffer, n );
+				CurrentLength += n;
 			}
 			await TerminatePostedData();
 		}
