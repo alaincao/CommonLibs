@@ -65,6 +65,7 @@ namespace CommonLibs.Utils
 		/// <summary>The one and only loop to run the callbacks</summary>
 		private async Task Loop()
 		{
+			System.Threading.SynchronizationContext.SetSynchronizationContext( null );
 			while( true )
 			{
 				var item = await Queue.Pop();
