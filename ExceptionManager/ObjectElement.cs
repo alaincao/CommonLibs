@@ -38,7 +38,7 @@ namespace CommonLibs.ExceptionManager
 		private static readonly string		DefaultTextKey		= string.Empty;
 		private static readonly object[]	DefaultParameters	= new object[]{};
 
-		public string						TextKey				= DefaultTextKey;
+		public string						TextKey				{ get; set; } = DefaultTextKey;
 		public object[]						Parameters			{ get { return parameters; } set { parameters = value; System.Diagnostics.Debug.Assert( CheckParameters(value), "Bad assignment to property 'Parameters'" ); } }
 		private object[]					parameters			= DefaultParameters;
 
@@ -82,11 +82,11 @@ namespace CommonLibs.ExceptionManager
 			Field
 		}
 
-		public List<ObjectElement>		Children	= new List<ObjectElement>();
+		public List<ObjectElement>		Children	{ get; set; } = new List<ObjectElement>();
 
-		public Types					Type		= Types.Undefined;
-		public string					ClassName	= null;
-		public string[]					StackTrace	= null;
+		public Types					Type		{ get; set; } = Types.Undefined;
+		public string					ClassName	{ get; set; } = null;
+		public string[]					StackTrace	{ get; set; } = null;
 
 		public object					Name		{ get { return name; } set { name = value; System.Diagnostics.Debug.Assert( CheckName(value), "Bad assignment to property 'Name'" ); } }
 		private object					name		= null;
@@ -184,7 +184,7 @@ namespace CommonLibs.ExceptionManager
 		private bool CheckValue(object value)
 		{
 			if( value == null )
-				// The value is not supposed to be NULL;
+				// The value is not supposed to be NULL
 				return false;
 			var type = value.GetType();
 			if( ObjectExplorer.IsDirectlyInterpretable(type) )

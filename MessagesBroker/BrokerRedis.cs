@@ -46,10 +46,10 @@ namespace CommonLibs.MessagesBroker
 
 		/// <summary>Update to change the default serialization method (JSON) of the messages in the Redis database</summary>
 		/// <remarks>'DeserializeMessages' must be updated accordingly</remarks>
-		public Func<List<TMessage>,string>	SerializeMessages;
+		public Func<List<TMessage>,string>	SerializeMessages			{ get; set; }
 		/// <summary>Update to change the default deserialization method (JSON) of the messages in the Redis database</summary>
 		/// <remarks>'SerializeMessages' must be updated accordingly</remarks>
-		public Func<string,List<CMessage>>	DeserializeMessages;
+		public Func<string,List<CMessage>>	DeserializeMessages			{ get; set; }
 
 		public BrokerRedis(string keysPrefix=null)
 		{

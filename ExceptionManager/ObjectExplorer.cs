@@ -171,11 +171,11 @@ public const int		MaximumDepth		= 5;
 						fieldsToSkip.Add( "Keys", null );
 						fieldsToSkip.Add( "Values", null );
 						fieldsToSkip.Add( "Item", null );
-						//exploreChildren = false;
+						//exploreChildren = false
 					}
 					else if( (currentEnumerable = currentObject as IEnumerable) != null )
 					{
-						//exploreChildren = false;
+						//exploreChildren = false
 					}
 
 					if( currentBaseException != null )

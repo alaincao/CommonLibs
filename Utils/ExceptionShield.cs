@@ -38,7 +38,7 @@ namespace CommonLibs.Utils
 	/// </summary>
 	public static class ExceptionShield
 	{
-		public static Action<Exception>		ShowException;
+		public static Action<Exception>		ShowException		{ get; set; }
 
 		static ExceptionShield()
 		{

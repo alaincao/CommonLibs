@@ -37,13 +37,13 @@ namespace CommonLibs.ExceptionManager
 {
 	public class HtmlWriter
 	{
-		public string					CssRoot			= "root";
-		public string					CssException	= "exception";
-		public string					CssStackTrace	= "stack";
-		public string					CssObject		= "object";
-		public string					CssField		= "field";
+		public string					CssRoot			{ get; set; } = "root";
+		public string					CssException	{ get; set; } = "exception";
+		public string					CssStackTrace	{ get; set; } = "stack";
+		public string					CssObject		{ get; set; } = "object";
+		public string					CssField		{ get; set; } = "field";
 
-		private Manager					Manager;
+		private readonly Manager		Manager;
 		private ObjectElement			Tree			{ get { return Manager.Tree; } }
 
 		#region Used by Explore

@@ -36,8 +36,8 @@ namespace CommonLibs.Utils.Event
 
 	public class PropertyHelper<T> : IValueHelper<T>
 	{
-		public Action<T>			Setter;
-		public Func<T>				Getter;
+		public Action<T>			Setter				{ get; set; }
+		public Func<T>				Getter				{ get; set; }
 		public T					Value				{ get { return Getter(); } set { SetValue(value); } }
 		public event Action			ValueChanged;
 		public bool					Available			{ get { return GetAvailable(); } }

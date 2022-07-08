@@ -35,7 +35,7 @@ using CommonLibs.Utils.Event;
 
 namespace CommonLibs.Utils.Tasks
 {
-	public class TasksQueue : IDisposable
+	public sealed class TasksQueue : IDisposable
 	{
 		[System.Diagnostics.Conditional("DEBUG")] private void LOG(string message)					{ CommonLibs.Utils.Debug.LOG( this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
@@ -46,28 +46,28 @@ namespace CommonLibs.Utils.Tasks
 
 		/// <summary>Contains only a reference to 1 object declared as volatile</summary>
 		/// <remarks>Remove this class when C# allow local variables to be declared as volatile</remarks>
-		private class VolatileContainer<T> where T : class { public volatile T Value; }
+		private sealed class VolatileContainer<T> where T : class { public volatile T Value; }
 
-		public int										MaximumConcurrentTasks		= 10;
+		public int										MaximumConcurrentTasks		{ get; set; } = 10;
 		/// <summary>The Timer class does not support timeouts > than 'System.Int32.MaxValue' miliseconds (~24 days (?) ) => Setting a maximum value (much lower than the maximum just in case)</summary>
 		private const int								MaximumTimeoutHours			= 24;
 		/// <summary>If this property is set to true, the CultureInfo of the thread that calls CreateTask() is copied to all created Threads</summary>
-		public bool										TransferCultureInfo			= true;
+		public bool										TransferCultureInfo			{ get; set; } = true;
 
 		internal static DateTime						Now							{ get { return DateTime.UtcNow; } }
 
 		internal object									LockObject;
 
-		private Dictionary<Guid,TaskEntry>				AllTasks					= new Dictionary<Guid,TaskEntry>();
-		private SortedList<DateTime,List<Guid>>			DelayedTasks				= new SortedList<DateTime,List<Guid>>();
+		private readonly Dictionary<Guid,TaskEntry>		AllTasks					= new Dictionary<Guid,TaskEntry>();
+		private readonly SortedList<DateTime,List<Guid>>DelayedTasks				= new SortedList<DateTime,List<Guid>>();
 		private Queue<Guid>								QueuedTasks					= new Queue<Guid>();
-		private HashSet<Guid>							RunningTasks				= new HashSet<Guid>();
+		private readonly HashSet<Guid>					RunningTasks				= new HashSet<Guid>();
 
 		private volatile Timer							CurrentTimer				= null;
 		private bool									Disposed					= false;
 
 		public event Action<TaskEntry>					OnEntryRemoved				{ add { onEntryRemoved.Add(value); } remove { onEntryRemoved.Remove(value); } }
-		private CallbackList<TaskEntry>					onEntryRemoved				= new CallbackList<TaskEntry>();
+		private readonly CallbackList<TaskEntry>		onEntryRemoved				= new CallbackList<TaskEntry>();
 
 		public TasksQueue()
 		{
@@ -168,7 +168,7 @@ namespace CommonLibs.Utils.Tasks
 				LOG( "CreateTask('" + executionDate + "') - Lock acquired" );
 				if( Disposed )
 					// Cannot create tasks anymore
-					throw new ApplicationException( "This TasksQueue instance is disposed" );
+					throw new CommonException( "This TasksQueue instance is disposed" );
 
 				entry = new TaskEntry( this, executionDate, TaskEntry.Statuses.Delayed, callback );
 				CheckValidity();
@@ -327,13 +327,11 @@ namespace CommonLibs.Utils.Tasks
 								throw new NotImplementedException( "Unknown task status '" + status + "'" );
 						}
 
-						{
-							// Remove the task from 'AllTasks' and set its status to 'Removed'
-							LOG( "Remove('" + entry + ") - Removing from AllTasks" );
-							var rc = AllTasks.Remove( id );
-							ASSERT( rc, "Task was not in 'AllTasks'" );
-							entry.SetStatus( TaskEntry.Statuses.Removed );
-						}
+						// Remove the task from 'AllTasks' and set its status to 'Removed'
+						LOG( "Remove('" + entry + ") - Removing from AllTasks" );
+						var removed = AllTasks.Remove( id );
+						ASSERT( removed, "Task was not in 'AllTasks'" );
+						entry.SetStatus( TaskEntry.Statuses.Removed );
 					} );
 
 				CheckValidity();
@@ -421,36 +419,28 @@ namespace CommonLibs.Utils.Tasks
 					LOG( "CheckDelayedTasks() - There is still at least 1 DelayedTask" );
 
 					ASSERT( DelayedTasks.Count > 0, "Logic error: 'topItem' is supposed to be available only when 'DelayedTasks' contains something" );
-					ASSERT( topItem.Value.Key >= now, "Logic error: 'topItem' is supposed point to the next task to execute, but it has its DateTime in the past" );
-					bool createTimer;
 					if( CurrentTimer != null )
 					{
-						// There is a CurrentTimer running but it does not manage the top DelayedTask => Replace it
+						// There is a CurrentTimer running but it does not manage the top DelayedTask => Need to replace the timer with one that will trigger sooner
 						LOG( "CheckDelayedTasks() - Removing CurrentTimer to replace it" );
 						CurrentTimer.Dispose();
 						CurrentTimer = null;
-
-						createTimer = true;
 					}
 					else  // CurrentTimer == null
 					{
-						// There is no running timer but there are tasks in DelayedTasks => Create it
-						createTimer = true;
+						// There is no running timer but there are tasks in DelayedTasks => Need to create it
 					}
 
-					if( createTimer )
+					// (Re)create the timer
+					var timeSpan = (topItem.Value.Key - now);
+					if( timeSpan.TotalHours > MaximumTimeoutHours )
 					{
-						var timeSpan = (topItem.Value.Key - now);
-						if( timeSpan.TotalHours > MaximumTimeoutHours )
-						{
-							
-							LOG( "CheckDelayedTasks() - Timeout value is too big (" + timeSpan + ") ; Reducing to " + MaximumTimeoutHours + " hours" );
-							timeSpan = new TimeSpan( hours:MaximumTimeoutHours, minutes:0, seconds:0 );
-						}
-						LOG( "CheckDelayedTasks() - Creating timer for " + timeSpan );
-						var timer = new Timer( (state)=>{CheckDelayedTasks();}, null, timeSpan, new TimeSpan(-1) );
-						CurrentTimer = timer;
+						LOG( "CheckDelayedTasks() - Timeout value is too big (" + timeSpan + ") ; Reducing to " + MaximumTimeoutHours + " hours" );
+						timeSpan = new TimeSpan( hours:MaximumTimeoutHours, minutes:0, seconds:0 );
 					}
+					LOG( "CheckDelayedTasks() - Creating timer for " + timeSpan );
+					var timer = new Timer( (state)=>{CheckDelayedTasks();}, null, timeSpan, new TimeSpan(-1) );
+					CurrentTimer = timer;
 				}
 
 				CheckValidity();

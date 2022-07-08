@@ -55,20 +55,20 @@ namespace CommonLibs.ExceptionManager
 			public object		ValueXml		{ get { return GetValue( true ); } set { SetValue( value, true ); } }
 
 			// These ones are not serialized in XML but are in JSON:
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public bool?		ValueBool		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public byte?		ValueByte		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public char?		ValueChar		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public short?	ValueShort		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public int?		ValueInt		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public long?		ValueLong		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public ushort?	ValueUShort		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public uint?		ValueUInt		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public ulong?	ValueULong		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public float?	ValueFloat		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public double?	ValueDouble		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public decimal?	ValueDecimal	= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public string	ValueString		= null;
-			[XmlIgnore][DataMember(EmitDefaultValue=false)]public DateTime?	ValueDatetime	= null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public bool?		ValueBool		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public byte?		ValueByte		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public char?		ValueChar		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public short?	ValueShort		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public int?		ValueInt		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public long?		ValueLong		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public ushort?	ValueUShort		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public uint?		ValueUInt		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public ulong?	ValueULong		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public float?	ValueFloat		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public double?	ValueDouble		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public decimal?	ValueDecimal	{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public string	ValueString		{ get; set; } = null;
+			[XmlIgnore][DataMember(EmitDefaultValue=false)]public DateTime?	ValueDatetime	{ get; set; } = null;
 
 			public SerializablePrimitive()  {}
 			public SerializablePrimitive(object value)  { SetValue( value, false ); }
@@ -90,33 +90,33 @@ namespace CommonLibs.ExceptionManager
 				ValueString		= null;
 				ValueDatetime	= null;
 
-				if( value == null )  return;
-				else if( (ValueString	= value as string	) != null )
+				if( value == null )
+					return;
+
+				ValueString	= value as string;
+				if( ValueString != null )
 				{
 					if( urlEncodedString )
 						// XML serializer has problems serializing some strings (e.g. "\n", "\r\n") => Serializing an URL-encoded version of the string...
 						ValueString = System.Web.HttpUtility.UrlDecode( ValueString );
 					return;
 				}
-				else if( (ValueBool		= value as bool?	).HasValue )	return;
-				else if( (ValueByte		= value as byte?	).HasValue )	return;
-				else if( (ValueChar		= value as char?	).HasValue )	return;
-				else if( (ValueShort	= value as short?	).HasValue )	return;
-				else if( (ValueInt		= value as int?		).HasValue )	return;
-				else if( (ValueLong		= value as long?	).HasValue )	return;
-				else if( (ValueUShort	= value as ushort?	).HasValue )	return;
-				else if( (ValueUInt		= value as uint?	).HasValue )	return;
-				else if( (ValueULong	= value as ulong?	).HasValue )	return;
-				else if( (ValueFloat	= value as float?	).HasValue )	return;
-				else if( (ValueDouble	= value as double?	).HasValue )	return;
-				else if( (ValueDecimal	= value as decimal?	).HasValue )	return;
-				else if( (ValueDatetime	= value as DateTime?).HasValue )	return;
-				else
-				{
-					System.Diagnostics.Debug.Fail( "Unsupported primitive type '" + value.GetType().FullName + "'" );
-					ValueString = value.ToString();  // Fallback, but might crash somewhere else...
-					return;
-				}
+				ValueBool		= value as bool?;		if( ValueBool.HasValue )		return;
+				ValueByte		= value as byte?;		if( ValueByte.HasValue )		return;
+				ValueChar		= value as char?;		if( ValueChar.HasValue )		return;
+				ValueShort		= value as short?;		if( ValueShort.HasValue )		return;
+				ValueInt		= value as int?;		if( ValueInt.HasValue )			return;
+				ValueLong		= value as long?;		if( ValueLong.HasValue )		return;
+				ValueUShort		= value as ushort?;		if( ValueUShort.HasValue )		return;
+				ValueUInt		= value as uint?;		if( ValueUInt.HasValue )		return;
+				ValueULong		= value as ulong?;		if( ValueULong.HasValue )		return;
+				ValueFloat		= value as float?;		if( ValueFloat.HasValue )		return;
+				ValueDouble		= value as double?;		if( ValueDouble.HasValue )		return;
+				ValueDecimal	= value as decimal?;	if( ValueDecimal.HasValue )		return;
+				ValueDatetime	= value as DateTime?;	if( ValueDatetime.HasValue )	return;
+
+				System.Diagnostics.Debug.Fail( "Unsupported primitive type '" + value.GetType().FullName + "'" );
+				ValueString = value.ToString();  // Fallback, but might crash somewhere else...
 			}
 
 			private object GetValue(bool urlEncodedString)
@@ -154,9 +154,9 @@ namespace CommonLibs.ExceptionManager
 		{
 			[XmlAttribute]
 			[DataMember]
-			public string						Key				= null;
+			public string						Key				{ get; set; } = null;
 			[DataMember]
-			public SerializablePrimitive[]		Parameters		= null;
+			public SerializablePrimitive[]		Parameters		{ get; set; } = null;
 
 			public SerializableTranslatable()
 			{
@@ -193,39 +193,39 @@ namespace CommonLibs.ExceptionManager
 		{
 			[XmlAttribute]
 			[DataMember]
-			public int								ID;
+			public int								ID					{ get; set; }
 
 			[XmlAttribute]
 			[DataMember]
-			public ObjectElement.Types				Type;
+			public ObjectElement.Types				Type				{ get; set; }
 
 			[XmlAttribute]
 			[DataMember(EmitDefaultValue=false)]
-			public string							NameString;
+			public string							NameString			{ get; set; }
 
 			[DataMember(EmitDefaultValue=false)]
-			public SerializableTranslatable			NameTranslatable;
+			public SerializableTranslatable			NameTranslatable	{ get; set; }
 
 			[XmlAttribute]
 			[DataMember(EmitDefaultValue=false)]
-			public string							Class;
+			public string							Class				{ get; set; }
 
 			[DataMember(EmitDefaultValue=false)]
-			public SerializablePrimitive			ValuePrimitive;
+			public SerializablePrimitive			ValuePrimitive		{ get; set; }
 
 			[DataMember(EmitDefaultValue=false)]
-			public SerializableTranslatable			ValueTranslatable;
+			public SerializableTranslatable			ValueTranslatable	{ get; set; }
 
 			[XmlArrayItem("line")]
 			[DataMember(EmitDefaultValue=false)]
-			public string[]							StackTrace;
+			public string[]							StackTrace			{ get; set; }
 
 			[XmlArrayItem("id")]
 			[DataMember(EmitDefaultValue=false)]
-			public int[]							Children;
+			public int[]							Children			{ get; set; }
 		}
 
-		private Dictionary<int,SerializableNode>		VisitedObjects		= new Dictionary<int,SerializableNode>();
+		private readonly Dictionary<int,SerializableNode>	VisitedObjects	= new Dictionary<int,SerializableNode>();
 
 		private SerializerHelper()
 		{
@@ -261,7 +261,7 @@ namespace CommonLibs.ExceptionManager
 					case ObjectElement.Types.Root:
 						element = ObjectElement.CreateRoot();
 						if( root != null )
-							throw new ApplicationException( "There is more than 1 root element in the XML document." );
+							throw new CommonException( "There is more than 1 root element in the XML document." );
 						root = element;
 						break;
 
@@ -302,7 +302,7 @@ namespace CommonLibs.ExceptionManager
 				elements.Add( obj.ID, element );
 			}
 			if( root == null )
-				throw new ApplicationException( "There is no root element in the XML document." );
+				throw new CommonException( "There is no root element in the XML document." );
 
 			// Recreate parent/child links between objects
 			foreach( var obj in nodes )

@@ -34,7 +34,7 @@ namespace CommonLibs.ExceptionManager
 {
 	public class TextWriter
 	{
-		private Manager					Manager;
+		private readonly Manager		Manager;
 		private ObjectElement			Tree			{ get { return Manager.Tree; } }
 		internal int					MaximumDepth	= 5;
 
@@ -138,7 +138,7 @@ namespace CommonLibs.ExceptionManager
 		internal static string GetElementName(object nodeName, Manager manager)
 		{
 			System.Diagnostics.Debug.Assert( nodeName != null, "The 'Name' property of a node of type 'object' or 'field' is not supposed to be null." );
-			System.Diagnostics.Debug.Assert( (nodeName.GetType() == typeof(string)) || (nodeName.GetType() == typeof(TranslatableElement)), "The 'Name' property is of an unknown type." );
+			System.Diagnostics.Debug.Assert( (nodeName is string) || (nodeName is TranslatableElement), "The 'Name' property is of an unknown type." );
 
 			var translatable = nodeName as TranslatableElement;
 			if( translatable != null )

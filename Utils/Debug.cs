@@ -35,8 +35,8 @@ namespace CommonLibs.Utils
 {
 	public static class Debug
 	{
-		public static Action<string,string>			LogHandler;
-		public static Action<string,string>			AssertionFailureHandler;
+		public static Action<string,string>			LogHandler					{ get; set; }
+		public static Action<string,string>			AssertionFailureHandler		{ get; set; }
 
 		static Debug()
 		{
@@ -53,13 +53,13 @@ namespace CommonLibs.Utils
 					{
 						System.Diagnostics.Debug.WriteLine( "*** ASSERTION FAILED ("+sender+"): "+message );
 						System.Diagnostics.Debug.Fail( "" + sender + "\n" + message );
-						//System.Diagnostics.Debugger.Break();
+						//System.Diagnostics.Debugger.Break()
 					};
 			#else
 				// In release mode, the LogHandler() and the AssertionFailureHandler() should never be called.
 				// But if this happens anyway, discard the calls. NB: The LogHandler and AssertionFailureHandler should NOT be left null anyway!!!
 				LogHandler = (sender,message)=>{};
-				AssertionFailureHandler =(sender,message)=>{};
+				AssertionFailureHandler = (sender,message)=>{};
 			#endif
 		}
 

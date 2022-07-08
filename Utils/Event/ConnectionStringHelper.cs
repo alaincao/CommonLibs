@@ -36,8 +36,8 @@ namespace CommonLibs.Utils.Event
 // TODO: Alain: Voir System.Data.SqlClient.SqlConnectionStringBuilder
 	public class ConnectionStringHelper
 	{
-		public static string				SampleConnectionString		= "Server='localhost';Database='northwind';User ID='sa';Password='secret'";
-		//public static string				SampleConnectionString		= "Data source='localhost';Initial Catalog='northwind';UID='sa';PWD='secret'";
+		public static string				SampleConnectionString		{ get; set; } = "Server='localhost';Database='northwind';User ID='sa';Password='secret'";
+		//public static string				SampleConnectionString		{ get; set; } = "Data source='localhost';Initial Catalog='northwind';UID='sa';PWD='secret'"
 
 		private const string				KEY_SERVER1					= "Server";
 		private const string				KEY_SERVER2					= "Data Source";

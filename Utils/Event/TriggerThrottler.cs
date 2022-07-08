@@ -36,26 +36,26 @@ namespace CommonLibs.Utils.Event
 {
 	public class TriggerThrottler
 	{
-		private object				LockObject			= new object();
+		private readonly object		LockObject			= new object();
 		private int					DelayTicks			= 1 * (int)TimeSpan.TicksPerSecond;  // Default: 1 second
 		private long				LastTriggerTick		= 0;
 		private volatile Timer		Timer				= null;
 		private volatile bool		StillRunning		= false;
 
-		public Tasks.TasksQueue		TasksQueue			= null;
-		public bool					InSeparateThread	= false;
+		public Tasks.TasksQueue		TasksQueue			{ get; private set; }
+		public bool					InSeparateThread	{ get; set; } = false;
 		public TimeSpan				Delay				{ get { return new TimeSpan(DelayTicks); } set { DelayTicks = (int)value.Ticks; } }
-		public Action				CallBackSync		= null;
-		public Func<Task>			CallBackAsync		= null;
+		public Action				CallBackSync		{ get; set; } = null;
+		public Func<Task>			CallBackAsync		{ get; set; } = null;
 
 		public TriggerThrottler()  {}
 
 		public void Trigger()
 		{
-			var dummy = Trigger( fromTimer:false );
+			Trigger( fromTimer:false ).FireAndForget();
 		}
 
-		public async void TriggerAsync()
+		public async Task TriggerAsync()
 		{
 			await Trigger( fromTimer:false );
 		}
@@ -84,7 +84,7 @@ namespace CommonLibs.Utils.Event
 					{
 						// Previous invokation not yet terminated => Redelay this one
 						var timerMiliseconds = ((long)DelayTicks / TimeSpan.TicksPerMillisecond);
-						Timer = new System.Threading.Timer( (state)=>{ var dummy = Trigger(fromTimer:true); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
+						Timer = new System.Threading.Timer( (state)=>{ Trigger(fromTimer:true).FireAndForget(); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
 						goto DISCARD;
 					}
 
@@ -98,7 +98,7 @@ namespace CommonLibs.Utils.Event
 					var timerTicks = DelayTicks - (now - LastTriggerTick);
 					var timerMiliseconds = ( timerTicks / TimeSpan.TicksPerMillisecond );
 					CommonLibs.Utils.Debug.ASSERT( timerMiliseconds >= 0, this, "Logic error" );
-					Timer = new System.Threading.Timer( (state)=>{ var dummy = Trigger(fromTimer:true); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
+					Timer = new System.Threading.Timer( (state)=>{ Trigger(fromTimer:true).FireAndForget(); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
 					goto DISCARD;
 				}
 				else
@@ -113,7 +113,7 @@ namespace CommonLibs.Utils.Event
 					goto INVOKE_CALLBACK;
 				}
 
-				//CommonLibs.Utils.Debug.ASSERT( false, this, "Unreachable code reached" );
+				//CommonLibs.Utils.Debug.ASSERT( false, this, "Unreachable code reached" )
 			}
 		DISCARD:
 			return;
@@ -121,24 +121,24 @@ namespace CommonLibs.Utils.Event
 		INVOKE_CALLBACK:
 			if(! InSeparateThread )
 			{
-				await InvokeCallback( null );
+				await InvokeCallback();
 			}
 			else
 			{
 				if( TasksQueue == null )
 					TasksQueue = new Tasks.TasksQueue();
-				TasksQueue.CreateTask( (e)=>{ InvokeCallback(e).Wait(); } );
+				TasksQueue.CreateTask( (e)=>{ InvokeCallback().Wait(); } );
 			}
 			return;
 		}
 
-		private async Task InvokeCallback(Tasks.TaskEntry dummy)
+		private async Task InvokeCallback()
 		{
 			CommonLibs.Utils.Debug.ASSERT( (CallBackSync == null) != (CallBackAsync == null), this, "One and only one of 'CallBackSync' and 'CallBackAsync' must be specified" );
 
 			try
 			{
-				CommonLibs.Utils.Debug.ASSERT( StillRunning == true, this, "Property 'StillRunning' is supposed to be 'true' here" );
+				CommonLibs.Utils.Debug.ASSERT( StillRunning, this, "Property 'StillRunning' is supposed to be 'true' here" );
 				if( CallBackSync != null )
 					CallBackSync();
 				else
@@ -151,7 +151,7 @@ namespace CommonLibs.Utils.Event
 			}
 			finally
 			{
-				CommonLibs.Utils.Debug.ASSERT( StillRunning == true, this, "Property 'StillRunning' is still supposed to be 'true' here" );
+				CommonLibs.Utils.Debug.ASSERT( StillRunning, this, "Property 'StillRunning' is still supposed to be 'true' here" );
 				StillRunning = false;
 			}
 		}

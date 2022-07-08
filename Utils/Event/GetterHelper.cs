@@ -36,9 +36,9 @@ namespace CommonLibs.Utils.Event
 
 	public class GetterHelper<T> : IValueHelper<T>
 	{
-		private object				LokObject			= new object();
+		private readonly object		LokObject			= new object();
 
-		public Func<T>				Getter;
+		public Func<T>				Getter				{ get; set; }
 		private T					CurrentValue;
 		public T					Value				{ get { return CheckValue(); } set { throw new NotImplementedException("GetterHelper.set_Value()"); } }
 		public event Action			ValueChanged;

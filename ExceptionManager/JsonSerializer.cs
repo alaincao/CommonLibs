@@ -35,7 +35,7 @@ namespace CommonLibs.ExceptionManager
 {
 	public class JsonSerializer
 	{
-		private ObjectElement				Tree;
+		private readonly ObjectElement		Tree;
 
 		public JsonSerializer(Manager manager)
 		{

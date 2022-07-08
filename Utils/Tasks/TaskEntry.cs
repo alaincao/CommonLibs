@@ -54,12 +54,12 @@ namespace CommonLibs.Utils.Tasks
 		}
 
 		internal Guid							ID						{ get; private set; }
-		private object							LockObject				= new object();
+		private readonly object					LockObject;
 		private volatile ManualResetEvent		WaitLocker				= null;
 		private volatile int					WaitLockerCount			= 0;
 
 		/// <summary>The TaskQueue containing this object</summary>
-		private TasksQueue						Tasks;
+		private readonly TasksQueue				Tasks;
 		internal DateTime						ExecutionDate			{ get; private set; }
 		public CultureInfo						CreatorCultureInfo		{ get; private set; }
 		public CultureInfo						CreatorUICultureInfo	{ get; private set; }

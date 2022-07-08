@@ -39,10 +39,10 @@ namespace CommonLibs.ExceptionManager
 		[XmlRoot(ElementName="exceptions")]
 		public class XmlRoot
 		{
-			public SerializerHelper.SerializableNode[]	objects;
+			public SerializerHelper.SerializableNode[]	objects	{ get; set; }
 		}
 
-		private ObjectElement				Tree;
+		private readonly ObjectElement		Tree;
 
 		public XmlSerializer(Manager manager)
 		{

@@ -18,7 +18,7 @@ namespace CommonLibs.MessagesBroker.CSClient
 
 	public class SimpleMessageReceiver : IMessageReceiver
 	{
-		public readonly TCallbacks		Callbacks		= new TCallbacks();
+		public TCallbacks		Callbacks		{ get; } = new TCallbacks();
 
 		/// <summary>p1: The received unhandled message</summary>
 		public readonly CallbackListAsync<TMessage>			OnUnknownMessageReceived	= new CallbackListAsync<TMessage>();

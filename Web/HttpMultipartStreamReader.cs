@@ -53,11 +53,10 @@ namespace CommonLibs.Web
 		}
 		private States								State						= States.Initial;
 
-		public readonly Encoding					ContentEncoding;
-		public readonly string						ContentType;
-		private byte[]								ContentBoundaryInitial;
-		private byte[]								ContentBoundary;
-		public string								ContentBoundaryString		=> Encoding.ASCII.GetString( ContentBoundaryInitial );
+		private readonly Encoding					ContentEncoding;
+		public string								ContentType					{ get; private set; }
+		private readonly byte[]						ContentBoundaryInitial;
+		private readonly byte[]						ContentBoundary;
 
 		/// <remarks>Only available when running from ProcessRequest()</remarks>
 		public readonly long						ContentLength;
@@ -69,35 +68,35 @@ namespace CommonLibs.Web
 		/// Triggered when a new file is being received from the HTTP stream<br/>
 		/// Parameter 1: The file name
 		/// </summary>
-		public readonly List<Func<string,Task>>		OnNewFile					= new List<Func<string,Task>>();
+		public List<Func<string,Task>>				OnNewFile					{ get; } = new List<Func<string,Task>>();
 		/// <summary>
 		/// Triggered when a new variable is being received from the HTTP stream<br/>
 		/// Parameter 1: The posted variable name
 		/// </summary>
-		public readonly List<Func<string,Task>>		OnNewVariable				= new List<Func<string,Task>>();
+		public List<Func<string,Task>>				OnNewVariable				{ get; } = new List<Func<string,Task>>();
 
 		/// <summary>
 		/// Triggered when data can be written to the file declared by the event 'OnNewFile'<br/>
 		/// Parameter 1: The data buffer that can be read from<br/>
 		/// Parameter 2: The number of bytes that can be read from the data buffer (Parametr 1)
 		/// </summary>
-		public readonly List<Func<byte[],int,Task>>	OnFileContentReceived		= new List<Func<byte[],int,Task>>();
+		public List<Func<byte[],int,Task>>			OnFileContentReceived		{ get; } = new List<Func<byte[],int,Task>>();
 
 		/// <summary>
 		/// Triggered when data can be written to the file declared by the event 'OnNewVariable'<br/>
 		/// Parameter 1: The data buffer that can be read from<br/>
 		/// Parameter 2: The number of bytes that can be read from the data buffer (Parametr 1)
 		/// </summary>
-		public readonly List<Func<byte[],int,Task>>	OnVariableContentReceived	= new List<Func<byte[],int,Task>>();
+		public List<Func<byte[],int,Task>>			OnVariableContentReceived	{ get; } = new List<Func<byte[],int,Task>>();
 
 		/// <summary>
 		/// Triggered when the end of the file declared by the event 'OnNewFile' can be closed
 		/// </summary>
-		public readonly List<Func<Task>>			OnEndOfFile					= new List<Func<Task>>();
+		public List<Func<Task>>						OnEndOfFile					{ get; } = new List<Func<Task>>();
 		/// <summary>
 		/// Triggered when the end of the variable declared by the event 'OnNewVariable' can be closed
 		/// </summary>
-		public readonly List<Func<Task>>			OnEndOfVariable				= new List<Func<Task>>();
+		public List<Func<Task>>						OnEndOfVariable				{ get; } = new List<Func<Task>>();
 
 		public HtmlPostedMultipartStreamParser(HttpRequest request)
 		{
@@ -283,8 +282,7 @@ namespace CommonLibs.Web
 			var headerString = ContentEncoding.GetString( headerContent );
 			var headerLines = headerString	.Split( new string[]{"\r\n"}, StringSplitOptions.RemoveEmptyEntries )
 											.Select( v=>v.Trim() );
-			var contentLine = headerLines	.Where( v=>v.StartsWith("Content-Disposition: ") )
-											.Single()
+			var contentLine = headerLines	.Single( v=>v.StartsWith("Content-Disposition: ") )
 											.Substring( "Content-Disposition: ".Length );
 			var contentTokens = contentLine	.Split( ';' )
 											.Select( v=>v.Trim() );
