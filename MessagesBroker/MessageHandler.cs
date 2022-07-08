@@ -58,8 +58,8 @@ namespace CommonLibs.MessagesBroker
 
 		protected Dictionary<string,Func<TMessage,Task>>	Handlers	= new Dictionary<string, Func<TMessage,Task>>();
 
-		public Func<TMessage,Task>				OnUnknownMessageReceived;
-		public Func<TMessage,Exception,Task>	OnHandlerException;
+		public Func<TMessage,Task>				OnUnknownMessageReceived	{ get; set; }
+		public Func<TMessage,Exception,Task>	OnHandlerException			{ get; set; }
 
 		public MessageHandler(IBroker broker)
 		{
@@ -100,7 +100,7 @@ namespace CommonLibs.MessagesBroker
 
 			foreach( var item in callbacks )
 			{
-				var notAwaited = Task.Run( async ()=>  // nb: Run asynchroneously
+				Task.Run( async ()=>
 					{
 						if( item.Callback != null )
 						{
@@ -111,7 +111,8 @@ namespace CommonLibs.MessagesBroker
 						{
 							await OnUnknownMessageReceived( item.Message );
 						}
-					} );
+					} )
+					.FireAndForget();
 			}
 
 			return Task.FromResult( 0 );
@@ -130,7 +131,7 @@ namespace CommonLibs.MessagesBroker
 			{
 				// Send response
 				var response = Broker.FillAsResponse( source:message, destination:Broker.NewMessage() );
-				try{ throw new ArgumentException($"{nameof(MessageHandler)}: Received message with unknown type '{message.TryGetString(MessageKeys.KeyMessageHandler)}'"); } catch( System.Exception ex ){ Broker.FillException(response, ex); };
+				try{ throw new ArgumentException($"{nameof(MessageHandler)}: Received message with unknown type '{message.TryGetString(MessageKeys.KeyMessageHandler)}'"); } catch( System.Exception ex ){ Broker.FillException(response, ex); }
 				await Broker.ReceiveMessages( new TMessage[]{ response } );
 			}
 		}

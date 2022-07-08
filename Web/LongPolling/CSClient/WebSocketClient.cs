@@ -54,14 +54,16 @@ namespace CommonLibs.Web.LongPolling.CSClient
 			finally
 			{
 				if( socket != null )
-				try
 				{
-					// Not terminated correctly
-					socket.Dispose();
-				}
-				catch( System.Exception ex )
-				{
-					FAIL( "'socket.Dispose()' threw an exception ("+ex.GetType().FullName+"): "+ex.Message );
+					try
+					{
+						// Not terminated correctly
+						socket.Dispose();
+					}
+					catch( System.Exception ex )
+					{
+						FAIL( "'socket.Dispose()' threw an exception ("+ex.GetType().FullName+"): "+ex.Message );
+					}
 				}
 			}
 		}

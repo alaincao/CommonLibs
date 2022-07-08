@@ -115,13 +115,13 @@ namespace CommonLibs.MessagesBroker.Utils
 				switch (reader.TokenType) {
 					case JsonToken.Comment:
 						break;
+					case JsonToken.EndArray:
+						return list;
 					default:
 						var v = ReadValue(reader);
 
 						list.Add(v);
 						break;
-					case JsonToken.EndArray:
-						return list;
 				}
 			}
 

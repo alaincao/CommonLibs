@@ -44,7 +44,7 @@ namespace CommonLibs.Utils
 		[System.Diagnostics.Conditional("DEBUG")] protected internal void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] protected internal void FAIL(string message)				{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		public class Reference : IDisposable
+		public sealed class Reference : IDisposable
 		{
 			public T					Instance			{ get; private set; }
 			internal Action				DisposeCallback		= null;
@@ -61,15 +61,15 @@ namespace CommonLibs.Utils
 			}
 		}
 
-		private class Entry
+		private sealed class Entry
 		{
 			internal int?			ThreadID			= null;
 			internal DateTime		ExpirationDate;
 			internal T				Object;
 		}
 
-		private object						Locker				{ get { return Instances; } }
-		private Dictionary<K,List<Entry>>	Instances			= new Dictionary<K,List<Entry>>();
+		private object								Locker				{ get { return Instances; } }
+		private readonly Dictionary<K,List<Entry>>	Instances			= new Dictionary<K,List<Entry>>();
 
 		/// <remarks>All instance returned by this function must be enclosed with 'using{}'</remarks>
 		public Reference Get(K key, TimeSpan instanceLifeTime, Func<T> constructor)
@@ -120,13 +120,9 @@ namespace CommonLibs.Utils
 					unassignThreadIDOnDispose = true;  // This new reference is taking ownership of this instance
 					goto FOUND;
 				}
-				else  // A new entry must be created
-				{
-					goto NOTFOUND;
-				}
-			}//lock
 
-		NOTFOUND:
+				// Not found => a new entry must be created
+			}//lock
 
 			var expirationDate = now + instanceLifeTime;
 			var obj = constructor();

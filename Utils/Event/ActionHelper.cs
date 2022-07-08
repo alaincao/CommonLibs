@@ -6,8 +6,8 @@ namespace CommonLibs.Utils.Event
 {
 	public class ActionHelper : ITriggerHoldable
 	{
-		public Action						Action;
-		public int							DelaySeconds		{	get { return Delay.HasValue ? (int)Delay.Value/1000 : 0; }
+		public Action						Action				{ get; set; }
+		public int							DelaySeconds		{	get { return Delay.HasValue ? Delay.Value/1000 : 0; }
 																	set { Delay = (value > 0) ? (value*1000) : (int?)null; } }
 		public bool							NoTrigger			{ get; set; }
 
@@ -75,8 +75,8 @@ namespace CommonLibs.Utils.Event
 
 	public class ActionHelper<T> : ITriggerHoldable
 	{
-		public Action<T>					Action;
-		public int							DelaySeconds		{	get { return Delay.HasValue ? (int)Delay.Value/1000 : 0; }
+		public Action<T>					Action				{ get; set; }
+		public int							DelaySeconds		{	get { return Delay.HasValue ? Delay.Value/1000 : 0; }
 																	set { Delay = (value > 0) ? (value*1000) : (int?)null; } }
 		public bool							NoTrigger			{ get; set; }
 

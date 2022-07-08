@@ -149,14 +149,13 @@ namespace CommonLibs.Web.LongPolling
 		{
 			CommonLibs.Utils.Debug.ASSERT( exception != null, System.Reflection.MethodInfo.GetCurrentMethod(), "Missing parameter 'exception'" );
 
-			string stackTrace = exception.StackTrace;
+			var sb = new StringBuilder( exception.StackTrace );
+			for( var ex = exception.InnerException; ex != null ; ex = ex.InnerException )
 			{
-				for( var ex = exception.InnerException; ex != null ; ex = ex.InnerException )
-				{
-					stackTrace += "\n"+ex.Message+"\n";
-					stackTrace += ex.StackTrace;
-				}
+				sb.Append( $"\n{ex.Message}\n" );
+				sb.Append( ex.StackTrace );
 			}
+			var stackTrace = sb.ToString();
 
 			// TODO: Alain: static CreateExceptionMessage(): Use ExceptionManager to create exception content and send it in the message.
 			var exceptionTemplate = new Dictionary<string,object> {  // Create the KeyMessageException with the exception content

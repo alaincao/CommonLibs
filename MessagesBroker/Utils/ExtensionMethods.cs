@@ -33,9 +33,9 @@ namespace CommonLibs.MessagesBroker.Utils
 {
 	public static class ExtensionMethods
 	{
-		public static List<Newtonsoft.Json.JsonConverter>		ToJSONConverters			= null;
-		public static bool										ToJSONFirstLetterLowerCased	= false;
-		public static List<Newtonsoft.Json.JsonConverter>		FromJSONConverters			= new List<Newtonsoft.Json.JsonConverter>{
+		public static List<Newtonsoft.Json.JsonConverter>		ToJSONConverters			{ get; set; } = null;
+		public static bool										ToJSONFirstLetterLowerCased	{ get; set; } = false;
+		public static List<Newtonsoft.Json.JsonConverter>		FromJSONConverters			{ get; set; } = new List<Newtonsoft.Json.JsonConverter>{
 																									new JsonDictionaryConverter(),  // Serialize JSON dictionaries to 'IDictionary<string,object>' instead of Newtonsoft's 'JObject'
 																								};
 

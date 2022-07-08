@@ -80,11 +80,11 @@ namespace CommonLibs.Utils
 			// Read from socket
 			var stream = new System.IO.MemoryStream();
 			var buffer = System.Net.WebSockets.WebSocket.CreateClientBuffer( bufferSize, bufferSize );
-		RECEIVE_AGAIN:
-			var result = await socket.ReceiveAsync( buffer, cancellationToken  );
-			stream.Write( buffer.Array, 0, result.Count );
-			if(! result.EndOfMessage )
-				goto RECEIVE_AGAIN;
+			WebSocketReceiveResult result;
+			do {
+				result = await socket.ReceiveAsync( buffer, cancellationToken  );
+				stream.Write( buffer.Array, 0, result.Count );
+			} while( ! result.EndOfMessage );
 
 			// Parse byte array
 			var rv = System.Text.Encoding.UTF8.GetString( stream.ToArray() );

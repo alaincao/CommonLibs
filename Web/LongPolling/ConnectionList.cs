@@ -46,7 +46,7 @@ namespace CommonLibs.Web.LongPolling
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		private class ConnectionEntry : IDisposable
+		private sealed class ConnectionEntry : IDisposable
 		{
 			internal ConnectionList					ConnectionList					{ get; private set; }
 			internal string							SessionID						{ get; private set; }
@@ -97,7 +97,7 @@ namespace CommonLibs.Web.LongPolling
 			}
 		}
 
-		private class SessionEntry
+		private sealed class SessionEntry
 		{
 			internal List<string>					ConnectionIDs					= new List<string>();
 			internal Dictionary<string,object>		CustomObjects					{ get { return customObjects ?? (customObjects = new Dictionary<string,object>()); } }
@@ -110,21 +110,21 @@ namespace CommonLibs.Web.LongPolling
 		private object								LockObject						{ get { return AllConnections; } }
 
 		/// <summary>If a connection stays disconnected more than this amount of seconds, it is considered definitely disconnected</summary>
-		public int									DisconnectionSeconds			= 15;
+		public int									DisconnectionSeconds			{ get; set; } = 15;
 		/// <summary>If a polling connections stays inactive more than this amount of seconds, it is closed so the client can reopen it</summary>
-		public int									StaleConnectionSeconds			= 15;
+		public int									StaleConnectionSeconds			{ get; set; } = 15;
 
 		public CommonLibs.Utils.Tasks.TasksQueue	TasksQueue						{ get; private set; }
 
 		/// <summary>
 		/// Key=ConnectionID ; Value=The ConnectionEntry
 		/// </summary>
-		private Dictionary<string,ConnectionEntry>	AllConnections					= new Dictionary<string,ConnectionEntry>();
+		private readonly Dictionary<string,ConnectionEntry>	AllConnections			= new Dictionary<string,ConnectionEntry>();
 
 		/// <summary>
 		/// Key=SessionID ; Value: List of ConnectionIDs
 		/// </summary>
-		private Dictionary<string,SessionEntry>		AllSessions						= new Dictionary<string,SessionEntry>();
+		private readonly Dictionary<string,SessionEntry>	AllSessions				= new Dictionary<string,SessionEntry>();
 
 		/// <summary>
 		/// Bind to this event to accept or reject incomming connections from clients<br/>
@@ -137,28 +137,28 @@ namespace CommonLibs.Web.LongPolling
 		/// </summary>
 		/// <remarks>Adding/removing callbacks to this event is NOT thread-safe and so should be done once at application initialization</remarks>
 		public event Func<IDictionary<string,object>,string,bool>	CheckInit			{ add { CheckInitCallbacks.Add(value); } remove { var rc=CheckInitCallbacks.Remove(value); ASSERT( rc, "Failed to remove CheckInit event's callback " + value ); } }
-		private List<Func<IDictionary<string,object>,string,bool>>	CheckInitCallbacks	= new List<Func<IDictionary<string,object>,string,bool>>();
+		private readonly List<Func<IDictionary<string,object>,string,bool>>	CheckInitCallbacks	= new List<Func<IDictionary<string,object>,string,bool>>();
 
 		/// <summary>
 		/// Triggered when a session has been allocated (when a connection not yet associated to any session has been received)<br/>
 		/// Parameter 1: The SessionID that just got allocated.
 		/// </summary>
 		public event Action<string>					SessionAllocated				{ add { SessionAllocatedAddCallback(value); } remove { SessionAllocatedRemoveCallback(value); } }
-		private List<Action<string>>				SessionAllocatedCallbacks		= new List<Action<string>>();
+		private readonly List<Action<string>>		SessionAllocatedCallbacks		= new List<Action<string>>();
 
 		/// <summary>
 		/// Triggered when an ASP session and all its associated connections were discarded<br/>
 		/// Parameter 1: The SessionID that just got discarded.
 		/// </summary>
 		public event Action<string>					SessionClosed					{ add { SessionClosedAddCallback(value); } remove { SessionClosedRemoveCallback(value); } }
-		private List<Action<string>>				SessionClosedCallbacks			= new List<Action<string>>();
+		private readonly List<Action<string>>		SessionClosedCallbacks			= new List<Action<string>>();
 
 		/// <summary>
 		/// Triggered when a new ConnectionID has been allocated by this ConnectionList.<br/>
 		/// Parameter 1: The ConnectionID that just registered.
 		/// </summary>
 		public event Action<string>					ConnectionAllocated				{ add { ConnectionAllocatedAddCallback(value); } remove { ConnectionAllocatedRemoveCallback(value); } }
-		private List<Action<string>>				ConnectionAllocatedCallbacks	= new List<Action<string>>();
+		private readonly List<Action<string>>		ConnectionAllocatedCallbacks	= new List<Action<string>>();
 
 		/// <summary>
 		/// Triggered when a long polling request has just connected to the server.<br:>
@@ -166,7 +166,7 @@ namespace CommonLibs.Web.LongPolling
 		/// </summary>
 		/// <remarks>Be aware that due to multithreading, the connection is not guaranteed to be available at the time of the event processing</remarks>
 		public event Action<string>					ConnectionRegistered			{ add { ConnectionRegisteredAddCallback(value); } remove { ConnectionRegisteredRemoveCallback(value); } }
-		private List<Action<string>>				ConnectionRegisteredCallbacks	= new List<Action<string>>();
+		private readonly List<Action<string>>		ConnectionRegisteredCallbacks	= new List<Action<string>>();
 
 		/// <summary>
 		/// Triggered when a ConnectionID is considered lost by this ConnectionList.<br/>
@@ -174,9 +174,9 @@ namespace CommonLibs.Web.LongPolling
 		/// </summary>
 // TODO: Alain: Event directly on the ConnectionEntry object (e.g. with a AddConnectionLost(connectionID,callback) method) so that there is no need to catch all events from all connections to monitor only 1 connection
 		public event Action<string>					ConnectionLost					{ add { ConnectionLostAddCallback(value); } remove { ConnectionLostRemoveCallback(value); } }
-		private List<Action<string>>				ConnectionLostCallbacks			= new List<Action<string>>();
+		private readonly List<Action<string>>		ConnectionLostCallbacks			= new List<Action<string>>();
 
-		private Action<string,Exception>			FatalExceptionHandler;
+		protected Action<string,Exception>			FatalExceptionHandler			{ get; set; }
 
 		public ConnectionList(CommonLibs.Utils.Tasks.TasksQueue tasksQueue)
 		{
@@ -1035,16 +1035,13 @@ namespace CommonLibs.Web.LongPolling
 			ConnectionLostInvokeCallbacks( connectionID );
 
 			// Dispose CustomObjects that are IDisposable
-			if( customObjects != null )
+			foreach( var obj in customObjects )
 			{
-				foreach( var obj in customObjects )
+				var disposable = obj as IDisposable;
+				if( disposable != null )
 				{
-					var disposable = obj as IDisposable;
-					if( disposable != null )
-					{
-						try { disposable.Dispose(); }
-						catch(System.Exception ex)  { FAIL( "'disposable.Dispose()' threw an exception (" + ex.GetType().FullName + "): " + ex.Message ); }
-					}
+					try { disposable.Dispose(); }
+					catch(System.Exception ex)  { FAIL( "'disposable.Dispose()' threw an exception (" + ex.GetType().FullName + "): " + ex.Message ); }
 				}
 			}
 

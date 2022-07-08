@@ -37,10 +37,10 @@ namespace CommonLibs.Utils.Event
 		bool				NoTrigger			{ get; set; }
 	}
 
-	public class TriggerHolder<T> : IDisposable where T : ITriggerHoldable
+	public sealed class TriggerHolder<T> : IDisposable where T : class, ITriggerHoldable
 	{
-		private bool		OldValue;
-		private T			Helper;
+		private readonly bool		OldValue;
+		private readonly T			Helper;
 
 		public TriggerHolder(T helper)
 		{

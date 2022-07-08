@@ -50,19 +50,19 @@ namespace CommonLibs.Web.LongPolling
 		private const int					ObjectNameTagPosition				= 15;  // The position of the tag in the custom object name (i.e. "ProgressHelper_".Length)
 		private static int					LastUID								= 0;  // An ID to uniquely identify each instances
 
-		private MessageHandler				MessageHandler;
+		private readonly MessageHandler		MessageHandler;
 		private ConnectionList				ConnectionList						{ get { return MessageHandler.ConnectionList; } }
 
 		protected string					CustomObjectName;
 		public bool							BoundToConnection					{ get { return ConnectionID != null; } }
 		public bool							BoundToSession						{ get { return SessionID != null; } }
-		private string						ConnectionID;
-		private string						SessionID;
+		private readonly string				ConnectionID;
+		private readonly string				SessionID;
 
-		private Action<string>				ConnectionAllocatedCallback			= null;
+		private readonly Action<string>		ConnectionAllocatedCallback			= null;
 		private Message						LastMessageSent						= null;
 		/// <summary>When this instance is bound to a session, leave this property to 'true' to resend the last message if a new connection arrives in the this session</summary>
-		public bool							ResendLastMessageToNewConnections	= true;
+		public bool							ResendLastMessageToNewConnections	{ get; set; } = true;
 
 		public bool							Aborted								{ get { return aborted; } }
 		private volatile bool				aborted								= false;
@@ -78,9 +78,9 @@ namespace CommonLibs.Web.LongPolling
 		/// <returns>The message to be sent to the peer when this instance is disposed or 'null' if none must be sent</returns>
 		protected abstract Message CreateTerminationMessage();
 
-		public ProgressHelper(MessageHandler messageHandler, Message requestMessage, bool sendToSession=false) : this(messageHandler, requestMessage.SenderConnectionID, sendToSession:sendToSession)  {}
+		protected ProgressHelper(MessageHandler messageHandler, Message requestMessage, bool sendToSession=false) : this(messageHandler, requestMessage.SenderConnectionID, sendToSession:sendToSession)  {}
 
-		public ProgressHelper(MessageHandler messageHandler, string connectionID, bool sendToSession=false)
+		protected ProgressHelper(MessageHandler messageHandler, string connectionID, bool sendToSession=false)
 		{
 			ASSERT( messageHandler != null, "Missing parameter 'messageHandler'" );
 			ASSERT( !string.IsNullOrEmpty(connectionID), "Missing parameter 'connectionID'" );
@@ -123,6 +123,11 @@ namespace CommonLibs.Web.LongPolling
 		}
 
 		public void Dispose()
+		{
+			Dispose( true );
+			GC.SuppressFinalize( this );
+		}
+		protected virtual void Dispose(bool disposing)
 		{
 			Terminate();
 		}

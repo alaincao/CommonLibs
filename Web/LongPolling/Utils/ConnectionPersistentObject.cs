@@ -64,7 +64,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 		protected abstract void OnClose();
 
-		public ConnectionPersistentObject(ConnectionList connectionList, PersistanceTypes persistanceType, string connectionID, string sessionID=null)
+		protected ConnectionPersistentObject(ConnectionList connectionList, PersistanceTypes persistanceType, string connectionID, string sessionID=null)
 		{
 			ASSERT( connectionList != null, "Missing parameter 'connectionList'" );
 			ASSERT(	( persistanceType == PersistanceTypes.Connection && (!string.IsNullOrEmpty(connectionID)) )
@@ -165,9 +165,11 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 		public void Dispose()
 		{
-			if( Closed != 0 )
-				// Already terminated
-				return;
+			Dispose( true );
+			GC.SuppressFinalize( this );
+		}
+		protected virtual void Dispose(bool disposing)
+		{
 			Close();
 		}
 

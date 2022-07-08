@@ -56,9 +56,9 @@ namespace CommonLibs.Web.LongPolling
 			void		ReceiveMessageForUnmanagedSession(string sessionID, Message message);
 		}
 
-		private class CallbackItem
+		private sealed class CallbackItem
 		{
-			internal bool							IsThreaded						{ get { return (CallbackThreaded != null) ? true : false; } }
+			internal bool							IsThreaded						{ get=>(CallbackThreaded != null); }
 			// If CallbackDirect is null, CallbackThreaded must be set ; And if CallbackThreaded is null, CallbackDirect must be set
 			internal Action<Message>				CallbackDirect					= null;
 			internal Action<TaskEntry,Message>		CallbackThreaded				= null;
@@ -67,7 +67,7 @@ namespace CommonLibs.Web.LongPolling
 		/// <summary>
 		/// Class used to save the context of the HTTP context's thread to the message handler's thread
 		/// </summary>
-		private class MessageContext
+		private sealed class MessageContext
 		{
 			internal MessageHandler					MessageHandler;
 			internal CallbackItem					CallbackItem;
@@ -98,50 +98,50 @@ namespace CommonLibs.Web.LongPolling
 
 		public TasksQueue							TaskQueue						{ get; private set; }
 		public ConnectionList						ConnectionList					{ get; private set; }
-		private Dictionary<string,CallbackItem>		HandlerCallbacks				= new Dictionary<string,CallbackItem>();
-		public IRouter								Router							= null;
+		private readonly Dictionary<string,CallbackItem> HandlerCallbacks			= new Dictionary<string,CallbackItem>();
+		public IRouter								Router							{ get; set; } = null;
 
 		/// <summary>
 		/// The list of messages currently waiting to be delivered<br/>
 		/// Parameter 1: The ConnectionID
 		/// </summary>
-		private Dictionary<string,List<Message>>	PendingMessages					= new Dictionary<string,List<Message>>();
+		private readonly Dictionary<string,List<Message>> PendingMessages			= new Dictionary<string,List<Message>>();
 
 		/// <summary>
 		/// The list of connections to which messages are not to be sent right now<br/>
 		/// Parameter 1: The ConnectionID
 		/// </summary>
-		private HashSet<string>						ConnectionsHeld					= new HashSet<string>();
+		private readonly HashSet<string>			ConnectionsHeld					= new HashSet<string>();
 
 		/// <summary>
 		/// Set this callback to determine the action to take when a fatal exception is detected whithin the MessageHandler
 		/// </summary>
-		public Action<string,Exception>				FatalExceptionHandler;
+		public Action<string,Exception>				FatalExceptionHandler			{ get; set; }
 
 		/// <summary>
 		/// Set this callback to determine the action to take when a message handler throws an exception.<br/>
 		/// The default behaviour is to send the exception message to the 'Message.SenderConnectionID'
 		/// </summary>
-		public Action<Message,Exception>			MessageHandlerExceptionHandler;
+		public Action<Message,Exception>			MessageHandlerExceptionHandler	{ get; set; }
 
 		/// <summary>
 		/// Set this callback to determine the action to take when a message with an unknown type is received.<br/>
 		/// The default behaviour is to throw a 'NotImplementedException' (which then sends an exception message to the sender).
 		/// </summary>
-		public Action<Message>						UnknownMessageTypeHandler;
+		public Action<Message>						UnknownMessageTypeHandler		{ get; set; }
 
 		/// <summary>
 		/// Set this callback if any object must be kept from the HTTP handler's thread to the message handler's thread (e.g. session object)
 		/// </summary>
-		public Func<object>							SaveMessageContextObject		= null;
+		public Func<object>							SaveMessageContextObject		{ get; set; } = null;
 		/// <summary>
 		/// Set this callback to restore the object saved by the "GetHttpContextObject" callback
 		/// </summary>
-		public Action<object>						RestoreMessageContextObject		= null;
+		public Action<object>						RestoreMessageContextObject		{ get; set; } = null;
 		/// <summary>
 		/// Set this callback to undo the action performed by RestoreMessageContextObject when the message handler is terminated (e.g. to clear any [ThreadStatic] objects assigned to this thread)
 		/// </summary>
-		public Action								ClearMessageContextObject		= null;
+		public Action								ClearMessageContextObject		{ get; set; } = null;
 
 		public MessageHandler(TasksQueue tasksQueue, ConnectionList connectionList)
 		{
@@ -442,13 +442,15 @@ namespace CommonLibs.Web.LongPolling
 				if( Router != null )
 				{
 					foreach( var message in messagesList )
-					try
 					{
-						Router.ReceiveMessageForUnmanagedConnection( receiverConnectionID, message );
-					}
-					catch( System.Exception ex )
-					{
-						FatalExceptionHandler( "Could not deliver messages - Router.ReceiveMessageForUnmanagedConnection() threw an exception", ex );
+						try
+						{
+							Router.ReceiveMessageForUnmanagedConnection( receiverConnectionID, message );
+						}
+						catch( System.Exception ex )
+						{
+							FatalExceptionHandler( "Could not deliver messages - Router.ReceiveMessageForUnmanagedConnection() threw an exception", ex );
+						}
 					}
 				}
 			}

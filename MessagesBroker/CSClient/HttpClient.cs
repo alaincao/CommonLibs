@@ -16,7 +16,7 @@ namespace CommonLibs.MessagesBroker.CSClient
 		private const string	RootMessageType_Logout		= "logout";  // Was used by legacy versions of the server (ie. the LongPolling one) ; Keep it here for compatibility
 
 		public readonly string						HandlerUrl;
-		public readonly TMessage					InitMessage;
+		public TMessage								InitMessage			{ get; }
 		public readonly System.Net.CookieContainer	Cookies;
 		private System.Net.Http.HttpClient			PollClient			= null;
 
@@ -45,8 +45,6 @@ namespace CommonLibs.MessagesBroker.CSClient
 			var response = await SendHttpRequest( InitMessage, isPollConnection:false );
 
 			var connectionID = response.TryGetString( RootMessageKeys.KeySenderID );
-			if( string.IsNullOrWhiteSpace(connectionID) )
-				throw new ArgumentException( "Invalid 'init' response message: '"+response.ToJSON()+"'" );
 			LOG( "ConnectionID: "+connectionID );
 			if( string.IsNullOrWhiteSpace(connectionID) )
 				throw new ArgumentException( "The server did not return the ConnectionID" );
@@ -157,7 +155,7 @@ namespace CommonLibs.MessagesBroker.CSClient
 			catch( Newtonsoft.Json.JsonReaderException jsonEx )
 			{
 				// Error parsing the server's response: Adding the full document to the exception message for ease of debugging
-				throw new ApplicationException( "Invalid server's response:\n"+strResponse, innerException:jsonEx );
+				throw new CommonException( "Invalid server's response:\n"+strResponse, innerException:jsonEx );
 			}
 		}
 
@@ -173,18 +171,18 @@ namespace CommonLibs.MessagesBroker.CSClient
 			await Task.FromResult(0);  // NB: Nothing to 'await' here
 		}
 
-		protected internal override async Task SendRootMessage(IDictionary<string, object> request)
+		protected internal override async Task SendRootMessage(IDictionary<string, object> rootMessage)
 		{
-			ASSERT( (request != null) && (request.Count > 0), "Missing parameter 'request'" );
+			ASSERT( (rootMessage != null) && (rootMessage.Count > 0), $"Missing parameter '{nameof(rootMessage)}'" );
 
-			request[RootMessageKeys.KeySenderID] = ConnectionID;
-			var response = await SendHttpRequest( request, isPollConnection:false );
+			rootMessage[RootMessageKeys.KeySenderID] = ConnectionID;
+			var response = await SendHttpRequest( rootMessage, isPollConnection:false );
 			var responseType = response[RootMessageKeys.KeyType] as string;
 			LOG( "Root message received: "+responseType );
 			switch( responseType )
 			{
 				case RootMessageType_Logout:
-					throw new ApplicationException( "Logged out" );
+					throw new CommonException( "Logged out" );
 
 				case RootMessageKeys.TypeMessages:
 					// NB: Should be empty

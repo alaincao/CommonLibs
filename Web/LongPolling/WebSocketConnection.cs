@@ -20,9 +20,9 @@ namespace CommonLibs.Web.LongPolling
 		protected ConnectionList	ConnectionList		{ get { return WebSocketHandler.ConnectionList; } }
 		internal bool				Registered			{ get; private set; }
 
-		private WebSocketHandler	WebSocketHandler;
+		private readonly WebSocketHandler WebSocketHandler;
 		internal WebSocket			Socket;
-		private object				MessageContext;
+		private readonly object		MessageContext;
 
 		#region For IConnection
 
@@ -185,11 +185,11 @@ namespace CommonLibs.Web.LongPolling
 			// Read from socket
 			var stream = new System.IO.MemoryStream();
 			var buffer = System.Net.WebSockets.WebSocket.CreateClientBuffer( WebSocketHandler.DefaultBufferSize, WebSocketHandler.DefaultBufferSize );
-		RECEIVE_AGAIN:
-			var result = await socket.ReceiveAsync( buffer, cancellationToken  );
-			stream.Write( buffer.Array, 0, result.Count );
-			if(! result.EndOfMessage )
-				goto RECEIVE_AGAIN;
+			WebSocketReceiveResult result;
+			do {
+				result = await socket.ReceiveAsync( buffer, cancellationToken  );
+				stream.Write( buffer.Array, 0, result.Count );
+			} while(! result.EndOfMessage );
 
 			// Parse byte array
 			var json = System.Text.Encoding.UTF8.GetString( stream.ToArray() );
@@ -214,7 +214,6 @@ namespace CommonLibs.Web.LongPolling
 			}
 			catch( System.Exception ex )
 			{
-				//LOG( "*** Error while closing the WebSocket (" + ex.GetType().FullName + "): " + ex.Message );
 				FAIL( "Error while closing the WebSocket (" + ex.GetType().FullName + "): " + ex.Message );
 			}
 		}

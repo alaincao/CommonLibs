@@ -41,7 +41,7 @@ namespace CommonLibs.Utils.Event
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		private List<Action>					List							= new List<Action>();
+		private readonly List<Action>			List							= new List<Action>();
 		public int								Count							{ get { lock(List){ return List.Count; } } }
 
 		public void Add(Action callback)
@@ -97,7 +97,7 @@ namespace CommonLibs.Utils.Event
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		private List<Action<T>>					List							= new List<Action<T>>();
+		private readonly List<Action<T>>		List							= new List<Action<T>>();
 		public int								Count							{ get { lock(List){ return List.Count; } } }
 
 		public void Add(Action<T> callback)
@@ -153,8 +153,8 @@ namespace CommonLibs.Utils.Event
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		private List<Func<T,Task>>	List		= new List<Func<T,Task>>();  // nb: Can be 'Task<bool>'
-		public int					Count		{ get { lock(List){ return List.Count; } } }
+		private readonly List<Func<T,Task>>		List		= new List<Func<T,Task>>();  // nb: Can be 'Task<bool>'
+		public int								Count		{ get { lock(List){ return List.Count; } } }
 
 		public void Add(Func<T,Task> callback)
 		{
@@ -237,8 +237,8 @@ namespace CommonLibs.Utils.Event
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		private List<Func<T,U,Task>>	List		= new List<Func<T,U,Task>>();
-		public int						Count		{ get { lock(List){ return List.Count; } } }
+		private readonly List<Func<T,U,Task>>	List		= new List<Func<T,U,Task>>();
+		public int								Count		{ get { lock(List){ return List.Count; } } }
 
 		public void Add(Func<T,U,Task> callback)
 		{

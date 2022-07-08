@@ -38,7 +38,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 		public const string							OutMsgParmFileID				= PageFile.RqstFileID;
 
 		public const string							HandlerType						= "GenericPageFile-de97320d";
-		public string								CustomObjectName				{ get { return (customObjectName != null) ? customObjectName : (customObjectName = Guid.NewGuid().ToString()); } set { customObjectName = value; } }
+		public string								CustomObjectName				{ get=>GetCustomObjectName(); set=>customObjectName = value; }
 		private string								customObjectName				= null;
 
 		public const string							RqstUploadReceiverAssembly		= "UploadReceiverAssembly";
@@ -47,16 +47,16 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 		public override int							UploadLengthForStreamParser		{ get { return 40*1024; } }
 
-		public OnUploadStartedDelegate				OnUploadStarted					= null;
+		public OnUploadStartedDelegate				OnUploadStarted					{ get; set; } = null;
 		/// <param name="request">The HttpRequest</param>
 		/// <param name="uploadFileName">The client's file name</param>
 		/// <param name="filePath">Set to the path the file must be saved</param>
 		public delegate void OnUploadStartedDelegate(HttpRequest request, string uploadFileName);
 
 		/// <summary>Set this method to change the default way to create upload file path</summary>
-		public Func<HttpRequest,string,string>		OnUploadGetFilePath				= DefaultGetFilePath;
+		public Func<HttpRequest,string,string>		OnUploadGetFilePath				{ get; set; } = DefaultGetFilePath;
 
-		public OnUploadTerminatedDelegate			OnUploadTerminated				= null;
+		public OnUploadTerminatedDelegate			OnUploadTerminated				{ get; set; } = null;
 		/// <param name="request">The HttpRequest</param>
 		/// <param name="uploadFileName">The file name as it has been uploaded</param>
 		/// <param name="filePath">The file path</param>
@@ -70,12 +70,21 @@ namespace CommonLibs.Web.LongPolling.Utils
 		/// Parameter 3: Set to the path of the file to download (required only if outputStream is set to null)<br/>
 		/// Parameter 4: Set to the stream to download (required only if filePath is set to null)
 		/// </summary>
-		public DownloadRequestedDeleagate DownloadRequested = null;
+		public DownloadRequestedDeleagate DownloadRequested { get; set; } = null;
 		public delegate void DownloadRequestedDeleagate(HttpRequest request, out string fileName, out string filePath, out System.IO.Stream outputStream);
 
 		public GenericPageFile(MessageHandler messageHandler, string connectionID) : base(messageHandler, connectionID)
 		{
 			OnSendingNewFileMessage += GenericPageFile_OnSendingNewFileMessage;
+		}
+
+		/// <remarks>Will assign a default GUID if not previously set</remarks>
+		private string GetCustomObjectName()
+		{
+			if( customObjectName != null )
+				return customObjectName;
+			customObjectName = Guid.NewGuid().ToString();
+			return customObjectName;
 		}
 
 		public static Dictionary<string,string> GetQueryParameters(Type receiverType, string methodName="OnPageFileCreated", string connectionID=null)
@@ -140,7 +149,7 @@ namespace CommonLibs.Web.LongPolling.Utils
 			if( string.IsNullOrEmpty(methodName) )
 				throw new ArgumentException( "GenericFileUpload failed: query parameter '" + RqstUploadReceiverMethod + "' is missing" );
 
-			var assembly = AppDomain.CurrentDomain.GetAssemblies().Where( v=>v.ManifestModule.Name == assemblyName ).Single();
+			var assembly = AppDomain.CurrentDomain.GetAssemblies().Single( v=>v.ManifestModule.Name == assemblyName );
 			var type = assembly.GetType( typeName );
 			var methodParameters = new Type[] {	typeof(LongPolling.ConnectionList),
 												typeof(string),

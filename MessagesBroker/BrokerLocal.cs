@@ -55,7 +55,7 @@ namespace CommonLibs.MessagesBroker
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		private class MessagesQueueItem
+		private sealed class MessagesQueueItem
 		{
 			internal static DateTime	Now				{ get { return DateTime.Now; } }
 			internal DateTime			LastReceived;
@@ -65,12 +65,12 @@ namespace CommonLibs.MessagesBroker
 		public const int		DefaultMessagesExpireSeconds	= BrokerBase.DefaultMessagesExpireSeconds;
 		public const int		DefaultCleanupIntervalSeconds	= 60;
 
-		private object									Locker						= new object();
-		private Dictionary<string,IEndPoint>			EndPoints					= new Dictionary<string,IEndPoint>();
-		private Dictionary<string,MessagesQueueItem>	MessagesQueues				= new Dictionary<string,MessagesQueueItem>();
-		public int										MessagesExpireSeconds		{ get; set; } = DefaultMessagesExpireSeconds;
-		private System.Timers.Timer						CleanupTimer;
-		public double									CleanupIntervalMilisecs		{ get { return CleanupTimer.Interval; } }
+		private readonly object									Locker						= new object();
+		private readonly Dictionary<string,IEndPoint>			EndPoints					= new Dictionary<string,IEndPoint>();
+		private readonly Dictionary<string,MessagesQueueItem>	MessagesQueues				= new Dictionary<string,MessagesQueueItem>();
+		public int												MessagesExpireSeconds		{ get; set; } = DefaultMessagesExpireSeconds;
+		private readonly System.Timers.Timer					CleanupTimer;
+		public double											CleanupIntervalMilisecs		{ get { return CleanupTimer.Interval; } }
 
 		TMessage	IBroker.	NewMessage(IDictionary<string,object> src)									=> NewMessage( src );
 		public virtual TMessage	NewMessage(IDictionary<string,object> src=null)								=> (src == null) ? new CMessage() : new CMessage( src );
@@ -89,6 +89,11 @@ namespace CommonLibs.MessagesBroker
 		}
 
 		public void Dispose()
+		{
+			Dispose( true );
+			GC.SuppressFinalize( this );
+		}
+		protected virtual void Dispose(bool disposing)
 		{
 			CleanupTimer.Stop();
 		}
@@ -128,19 +133,14 @@ namespace CommonLibs.MessagesBroker
 			CommonLibs.Utils.Debug.ASSERT( exception != null, System.Reflection.MethodInfo.GetCurrentMethod(), $"Missing parameter '{nameof(exception)}'" );
 			CommonLibs.Utils.Debug.ASSERT( ! message.ContainsKey(MessageKeys.KeyMessageException), System.Reflection.MethodInfo.GetCurrentMethod(), $"The message key '{MessageKeys.KeyMessageException}' will be overwritten on the response message" );
 
-			string stackTrace = exception.StackTrace;
-			{
-				for( var ex = exception.InnerException; ex != null ; ex = ex.InnerException )
-				{
-					stackTrace += "\n"+ex.Message+"\n";
-					stackTrace += ex.StackTrace;
-				}
-			}
+			var stackTrace = new System.Text.StringBuilder();
+			for( var ex = exception.InnerException; ex != null ; ex = ex.InnerException )
+				stackTrace.Append( $"\n{ex.Message}\n{ex.StackTrace}" );
 
 			message[MessageKeys.KeyMessageException] = new Dictionary<string,object> {
 					{ MessageKeys.KeyMessageExceptionMessage,		exception.Message },
 					{ MessageKeys.KeyMessageExceptionClass,			exception.GetType().FullName },
-					{ MessageKeys.KeyMessageExceptionStackTrace,	stackTrace }
+					{ MessageKeys.KeyMessageExceptionStackTrace,	stackTrace.ToString() },
 				};
 		}
 
@@ -153,11 +153,9 @@ namespace CommonLibs.MessagesBroker
 			lock( Locker )
 			{
 				// Check if an existing one is already registered
-				{
-					var existing = EndPoints.TryGet( id );
-					if( existing != null )
-						throw new BrokerBase.EndpointAlreadyRegistered( $"The endpoint '{id}' has already been registered", existing );
-				}
+				var existing = EndPoints.TryGet( id );
+				if( existing != null )
+					throw new BrokerBase.EndpointAlreadyRegisteredException( $"The endpoint '{id}' has already been registered", existing );
 
 				// Are there any messages in the queue ?
 				queue = MessagesQueues.TryGet( id );
@@ -172,17 +170,18 @@ namespace CommonLibs.MessagesBroker
 
 				// Register endpoint
 				EndPoints.Add( id, endPoint );
-			BREAK:;
 			}
+		BREAK:
 
 			if( queue != null )
 			{
 				// There were messages in the queue => Send them
-				var notAwaited = Task.Run( async ()=>  // nb: Run asynchroneously
+				Task.Run( async ()=>
 					{
 						try { await endPoint.ReceiveMessages( queue.Messages ); }
 						catch( System.Exception ex ) { FAIL( $"endPoint.ReceiveMessages() threw an exception ({ex.GetType().FullName}): {ex.Message}" ); }
-					} );
+					} )
+					.FireAndForget();
 			}
 
 			return Task.FromResult( 0 );
@@ -237,11 +236,12 @@ namespace CommonLibs.MessagesBroker
 				if( endPoint != null )
 				{
 					// Endpoint available => Send them
-					var notAwaited = Task.Run( async ()=>  // nb: Run asynchroneously
+					Task.Run( async ()=>
 						{
 							try { await endPoint.ReceiveMessages( pair.Messages ); }
 							catch( System.Exception ex ) { FAIL( $"endPoint.ReceiveMessages() threw an exception ({ex.GetType().FullName}): {ex.Message}" ); }
-						} );
+						} )
+						.FireAndForget();
 				}
 			}
 

@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using CommonLibs.Web.LongPolling.Utils;
+using CommonLibs.Utils;
 
 namespace CommonLibs.Web.LongPolling.CSClient
 {
@@ -27,11 +27,11 @@ namespace CommonLibs.Web.LongPolling.CSClient
 		internal protected object				LockObject			= new object();
 		public ConnectionStatus					Status				{ get; private set; }
 		public string							ConnectionID		{ get; private set; }
-		private List<Message>					PendingMessages		= new List<Message>();
+		private readonly List<Message>			PendingMessages		= new List<Message>();
 
 		public MessageHandler					MessageHandler		{ get; private set; }
 		public System.Net.CookieContainer		Cookies				{ get; private set; }
-		public RootMessage						InitMessage			= RootMessage.CreateClientInit();
+		public RootMessage						InitMessage			{ get; } = RootMessage.CreateClientInit();
 
 		/// <summary>p1: The new status</summary>
 		public event Action<ConnectionStatus>	OnStatusChanged;
@@ -50,7 +50,7 @@ namespace CommonLibs.Web.LongPolling.CSClient
 		internal protected abstract Task SendRootMessage(RootMessage rootMessage);
 
 		/// <param name="cookies">Contains the ASP.NET session cookie</param>
-		internal protected BaseClient(MessageHandler messageHandler, System.Net.CookieContainer cookies)
+		private protected BaseClient(MessageHandler messageHandler, System.Net.CookieContainer cookies)
 		{
 			ASSERT( messageHandler != null, "Missing parameter 'messageHandler'" );
 			ASSERT( cookies != null, "Missing parameter 'cookies'" );
@@ -124,10 +124,10 @@ namespace CommonLibs.Web.LongPolling.CSClient
 			Status = ConnectionStatus.Connected;
 			TriggerStatusChanged();
 
-			CheckPendingMessages();
+			CheckPendingMessages().FireAndForget();
 
 			// Send/receive messages loop
-			var dummy = MainLoop();  // NB: No await => Run on background tasks threads starting from here
+			MainLoop().FireAndForget();  // NB: No await => Run on background tasks threads starting from here
 			return true;
 		}
 
@@ -196,17 +196,17 @@ namespace CommonLibs.Web.LongPolling.CSClient
 						break;
 					case ConnectionStatus.Closing:
 					case ConnectionStatus.Disconnected:
-						throw new ApplicationException( "Cannot send message: Connection status is '"+Status+"'" );
+						throw new CommonException( $"Cannot send message: Connection status is '{Status}'" );
 					default:
 						throw new NotImplementedException( "Unknown status '"+Status+"'" );
 				}
 
 				PendingMessages.Add( message );
 			}
-			CheckPendingMessages();
+			CheckPendingMessages().FireAndForget();
 		}
 
-		private async void CheckPendingMessages()
+		private async Task CheckPendingMessages()
 		{
 			LOG( "CheckPendingMessages()" );
 
@@ -274,7 +274,7 @@ namespace CommonLibs.Web.LongPolling.CSClient
 
 			if( launchCloseConnection )
 			{
-				var dummy = CloseConnection( connectionID );  // NB: No await so can be performed in background
+				CloseConnection( connectionID ).FireAndForget();  // NB: No await so can be performed in background
 			}
 		}
 
@@ -282,7 +282,7 @@ namespace CommonLibs.Web.LongPolling.CSClient
 		{
 			ASSERT( (rootMessage != null) && (rootMessage.Count > 0), "Missing parameter 'rootMessage'" );
 			ASSERT( (rootMessage[RootMessage.TypeKey] as string) == RootMessage.TypeMessages, "Invalid root message type '"+rootMessage[RootMessage.TypeKey]+"' ; expected '"+RootMessage.TypeMessages+"'" );
-			ASSERT( (rootMessage[RootMessage.KeyMessageMessagesList] as IEnumerable) != null, "Invalid content of root message" );
+			ASSERT( rootMessage[RootMessage.KeyMessageMessagesList] is IEnumerable, "Invalid content of root message" );
 
 			foreach( IDictionary<string,object> messageItem in (IEnumerable)rootMessage[RootMessage.KeyMessageMessagesList] )
 			{
@@ -316,7 +316,7 @@ namespace CommonLibs.Web.LongPolling.CSClient
 			}
 
 			if( Status == ConnectionStatus.Connected )
-				CheckPendingMessages();
+				CheckPendingMessages().FireAndForget();
 		}
 
 		internal protected void TriggerInternalError(string message, Exception exception=null)

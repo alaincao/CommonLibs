@@ -30,7 +30,7 @@ namespace CommonLibs.MessagesBroker.CSClient
 		private readonly object					LockObject			= new object();
 		public ConnectionStatus					Status				{ get; private set; }
 		public string							ConnectionID		{ get; private set; }
-		private List<TMessage>					PendingMessages		= new List<TMessage>();
+		private readonly List<TMessage>			PendingMessages		= new List<TMessage>();
 
 		public readonly IMessageReceiver		MessageReceiver;
 
@@ -55,7 +55,7 @@ namespace CommonLibs.MessagesBroker.CSClient
 		internal protected abstract Task CloseConnection(string connectionID);
 		internal protected abstract Task SendRootMessage(TRootMessage rootMessage);
 
-		internal protected BaseClient(IMessageReceiver messageReceiver=null)
+		private protected BaseClient(IMessageReceiver messageReceiver=null)
 		{
 			MessageReceiver = messageReceiver ?? new SimpleMessageReceiver();
 
@@ -124,7 +124,7 @@ namespace CommonLibs.MessagesBroker.CSClient
 			CheckPendingMessages().FireAndForget();
 
 			// Send/receive messages loop
-			var dummy = MainLoop();  // NB: No await => Run on background tasks threads starting from here
+			MainLoop().FireAndForget();  // NB: No await => Run on background tasks threads starting from here
 			return true;
 		}
 
@@ -209,7 +209,7 @@ namespace CommonLibs.MessagesBroker.CSClient
 						break;
 					case ConnectionStatus.Closing:
 					case ConnectionStatus.Disconnected:
-						throw new ApplicationException( "Cannot send message: Connection status is '"+Status+"'" );
+						throw new CommonException( $"Cannot send message: Connection status is '{Status}'" );
 					default:
 						throw new NotImplementedException( "Unknown status '"+Status+"'" );
 				}
@@ -285,7 +285,7 @@ namespace CommonLibs.MessagesBroker.CSClient
 
 			if( launchCloseConnection )
 			{
-				var dummy = CloseConnection( connectionID );  // NB: No await so can be performed in background
+				CloseConnection( connectionID ).FireAndForget();  // NB: No await so can be performed in background
 			}
 		}
 
@@ -293,7 +293,7 @@ namespace CommonLibs.MessagesBroker.CSClient
 		{
 			ASSERT( (rootMessage != null) && (rootMessage.Count > 0), "Missing parameter 'rootMessage'" );
 			ASSERT( (rootMessage[RootMessageKeys.KeyType] as string) == RootMessageKeys.TypeMessages, $"Invalid root message type '{rootMessage[RootMessageKeys.KeyType]}' ; expected '{RootMessageKeys.TypeMessages}'" );
-			ASSERT( (rootMessage[RootMessageKeys.TypeMessages] as IEnumerable) != null, "Invalid content of root message" );
+			ASSERT( rootMessage[RootMessageKeys.TypeMessages] is IEnumerable, "Invalid content of root message" );
 
 			TMessage[] messages;
 			try

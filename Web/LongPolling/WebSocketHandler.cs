@@ -14,18 +14,21 @@ namespace CommonLibs.Web.LongPolling
 		[System.Diagnostics.Conditional("DEBUG")] private void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] private void FAIL(string message)					{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		internal class CloseConnectionException : ApplicationException
+		[Serializable]
+		internal class CloseConnectionException : CommonException
 		{
 			internal bool	IsError		{ get; private set; }
 			internal CloseConnectionException()					: base()		{ IsError = false; }
 			internal CloseConnectionException(string message)	: base(message)	{ IsError = true; }
+			protected CloseConnectionException(System.Runtime.Serialization.SerializationInfo info, System.Runtime.Serialization.StreamingContext context) : base(info, context)
+				=> throw new NotImplementedException( $"Serialization of '{nameof(CloseConnectionException)}' is not implemented" );
 		}
 
 		public abstract MessageHandler		MessageHandler		{ get; }
 		public abstract ConnectionList		ConnectionList		{ get; }
 
-		public static int					DefaultBufferSize	= 1024;
-		public static int					InitTimeoutSeconds	= 5;
+		public static int					DefaultBufferSize	{ get; set; } = 1024;
+		public static int					InitTimeoutSeconds	{ get; set; } = 5;
 
 		#region For IHttpHandler
 		public bool							IsReusable			{ get { return true; } }

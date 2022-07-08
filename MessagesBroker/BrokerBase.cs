@@ -48,12 +48,17 @@ namespace CommonLibs.MessagesBroker
 		[System.Diagnostics.Conditional("DEBUG")] protected void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] protected void FAIL(string message)				{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		public class EndpointAlreadyRegistered : ApplicationException
+		[Serializable]
+		public class EndpointAlreadyRegisteredException : CommonException
 		{
 			public readonly IEndPoint	EndPoint;
-			internal EndpointAlreadyRegistered(string message, IEndPoint endPoint) : base(message)
+			internal EndpointAlreadyRegisteredException(string message, IEndPoint endPoint) : base(message)
 			{
 				EndPoint = endPoint;
+			}
+			protected EndpointAlreadyRegisteredException(System.Runtime.Serialization.SerializationInfo info, System.Runtime.Serialization.StreamingContext context) : base(info, context)
+			{
+				throw new NotImplementedException( $"Serialization of '{nameof(EndpointAlreadyRegisteredException)}' is not implemented" );
 			}
 		}
 
@@ -86,7 +91,7 @@ namespace CommonLibs.MessagesBroker
 						// OK
 						return;
 					// Not OK
-					throw new EndpointAlreadyRegistered( $"The endpoint '{endPoint.ID}' has already been registered", existing );
+					throw new EndpointAlreadyRegisteredException( $"The endpoint '{endPoint.ID}' has already been registered", existing );
 				};
 			checkExisting();
 
@@ -143,7 +148,7 @@ namespace CommonLibs.MessagesBroker
 		public async Task ReceiveMessages(IEnumerable<TMessage> messages)
 		{
 			ASSERT( messages != null, $"Missing parameter '{nameof(messages)}'" );
-			ASSERT( messages.Where(v=>string.IsNullOrWhiteSpace(v.TryGetString(MessageKeys.KeyReceiverID))).Count() == 0, $"There are messages without '{MessageKeys.KeyReceiverID}' defined" );
+			ASSERT( messages.Any(v=>string.IsNullOrWhiteSpace(v.TryGetString(MessageKeys.KeyReceiverID))), $"There are messages without '{MessageKeys.KeyReceiverID}' defined" );
 
 			var messagesToSave = (new{ EndPointID=(string)null, Messages=(List<TMessage>)null }).NewAnonymousList();
 			var messagesToSend = (new{ EndPoint=(IEndPoint)null, Messages=(List<TMessage>)null }).NewAnonymousList();
@@ -182,11 +187,12 @@ namespace CommonLibs.MessagesBroker
 
 			foreach( var item in messagesToSend )
 			{
-				var notAwaited = Task.Run( async ()=>  // nb: Run asynchroneously
+				Task.Run( async ()=>
 					{
 						try { await item.EndPoint.ReceiveMessages( item.Messages ); }
 						catch( System.Exception ex ) { exception = (exception ?? ex); }
-					} );
+					} )
+					.FireAndForget();
 			}
 
 			foreach( var item in messagesToSave )
@@ -197,7 +203,7 @@ namespace CommonLibs.MessagesBroker
 
 			if( exception != null )
 				// An exception has been encountered => Rethrow the first one received
-				throw new ApplicationException( $"An error occurred while receiving a message ({exception.GetType().FullName}): {exception.Message}", innerException:exception );
+				throw new CommonException( $"An error occurred while receiving a message ({exception.GetType().FullName}): {exception.Message}", innerException:exception );
 		}
 
 		protected async Task CheckPendingMessages(string endPointID)

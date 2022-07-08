@@ -43,28 +43,34 @@ namespace CommonLibs.Web.LongPolling.Utils
 		[System.Diagnostics.Conditional("DEBUG")] protected void ASSERT(bool test, string message)	{ CommonLibs.Utils.Debug.ASSERT( test, this, message ); }
 		[System.Diagnostics.Conditional("DEBUG")] protected void FAIL(string message)				{ CommonLibs.Utils.Debug.ASSERT( false, this, message ); }
 
-		public class OperationAbortedException : ApplicationException
+		[Serializable]
+		public class OperationAbortedException : CommonException
 		{
 			public OperationAbortedException(string message) : base(message)  {}
+			protected OperationAbortedException(System.Runtime.Serialization.SerializationInfo info, System.Runtime.Serialization.StreamingContext context) : base(info, context)
+				=> throw new NotImplementedException( $"Serialization of '{nameof(OperationAbortedException)}' is not implemented" );
 		}
 
-		public class MaximumUploadSizeException : ApplicationException
+		[Serializable]
+		public class MaximumUploadSizeException : CommonException
 		{
 			public MaximumUploadSizeException(string message) : base(message)  {}
+			protected MaximumUploadSizeException(System.Runtime.Serialization.SerializationInfo info, System.Runtime.Serialization.StreamingContext context) : base(info, context)
+				=> throw new NotImplementedException( $"Serialization of '{nameof(MaximumUploadSizeException)}' is not implemented" );
 		}
 
 		// Parameters for messages sent to peer :
 
 		/// <summary>The handler name that is used to register against the MessageHandler</summary>
 		/// <remarks>Can be changed, but only once and at application start</remarks>
-		public static string						InMsgHandlerType			= "FileUpload";
+		public static string						InMsgHandlerType			{ get; set; } = "FileUpload";
 		public const string							InMsgTypeKey				= "FileUploadMessageType";
 		public const string							InMsgTypeAbort				= "Abort";
 		public const string							InMsgResponseHandler		= RqstResponseHandler;
 
 		// Parameters for messages coming from the peer :
 
-		public string								OutMsgHandlerType			= null;
+		public string								OutMsgHandlerType			{ get; set; } = null;
 		public const string							OutMsgTypeKey				= "FileUploadMessageType";
 		public const string							OutMsgTypeStart				= "Start";
 		public const string							OutMsgTypeProgress			= "Progress";
@@ -82,15 +88,14 @@ namespace CommonLibs.Web.LongPolling.Utils
 		public const string							RqstResponseHandler			= "ResponseHandler";
 
 		public MessageHandler						MessageHandler				{ get; private set; }
-		public TimeSpan								NotificationInterval		= new TimeSpan( hours:0, minutes:0, seconds:1 );
+		public TimeSpan								NotificationInterval		{ get; set; } = new TimeSpan( hours:0, minutes:0, seconds:1 );
 
 		protected object							Locker						= new object();
 		public string								ConnectionID				{ get; private set; }
 		public bool									IsDoingSomething			{ get { return (CurrentOperationObject != null); } }
 		private volatile object						CurrentOperationObject		= null;
-		public bool									Disposed					{ get { return disposed; } private set { disposed = value; } }
-		private volatile bool						disposed					= false;
-		public long?								MaximumUploadSize			= null;
+		public bool									Disposed					{ get=>disposed; }
+		public long?								MaximumUploadSize			{ get; set; } = null;
 		private List<string>						FilesToDeleteOnDispose		= new List<string>();
 		/// <summary>When upload ContentLenght > 10M, use the 'HtmlPostedMultipartStreamParser' to upload the file</summary>
 		public abstract int							UploadLengthForStreamParser	{ get; }
@@ -107,15 +112,21 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 		public event Action<Message> OnSendingNewFileMessage;
 
-		public Action<Exception,Message> OnUploadException = null;
+		public Action<Exception,Message> OnUploadException { get; set; } = null;
 
-		public PageFile(MessageHandler messageHandler, string connectionID)
+		protected PageFile(MessageHandler messageHandler, string connectionID)
 		{
 			MessageHandler = messageHandler;
 			ConnectionID = connectionID;
 		}
 
+		private bool disposed = false;
 		public void Dispose()
+		{
+			Dispose( true );
+			GC.SuppressFinalize( this );
+		}
+		protected virtual void Dispose(bool disposing)
 		{
 			lock( Locker )
 			{
@@ -123,9 +134,9 @@ namespace CommonLibs.Web.LongPolling.Utils
 				try { SetConcurrentOperationsObject( null ); }
 				catch( System.Exception ex ) { FAIL( "'SetConcurrentOperationsObject()' threw exception (" + ex.GetType().FullName + "): " + ex.Message ); }
 
-				if( Disposed )
+				if( disposed )
 					return;
-				Disposed = true;
+				disposed = true;
 
 				try
 				{
@@ -152,12 +163,12 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 		protected virtual void OnCustomMessageReceived(Message message, string messageType)
 		{
-			return;  // Virtual => NOOP
+			// Virtual => NOOP
 		}
 
 		protected virtual void OnDispose()
 		{
-			return;  // Virtual => NOOP
+			// Virtual => NOOP
 		}
 
 		/// <param name="persistantObjectName">Will be used as CustomObject name to get the object instance</param>

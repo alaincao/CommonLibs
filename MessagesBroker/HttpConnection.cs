@@ -50,8 +50,8 @@ namespace CommonLibs.MessagesBroker
 		public string		ID							{ get; private set; } = null;
 		public IBroker		Broker						{ get; private set; } = null;
 		bool IEndPoint.		IsOneShot					=> true;
-		public string		DefaultReceiverID			= null;
-		public int			StaleTimeoutMilisec			= DefaultStaleTimeoutMilisec;
+		public string		DefaultReceiverID			{ get; set; } = null;
+		public int			StaleTimeoutMilisec			{ get; set; } = DefaultStaleTimeoutMilisec;
 		public const int	DefaultStaleTimeoutMilisec	= 15000;
 
 		private volatile TaskCompletionSource<TRootMessage>	CompletionSource	= null;
@@ -85,7 +85,7 @@ namespace CommonLibs.MessagesBroker
 					// Create an ID for this connection and send it to client
 					ID = await ValidateInit( context, request );
 					if( string.IsNullOrWhiteSpace(ID) )
-						throw new ArgumentNullException( "ID" );
+						throw new CommonException( "Init message missing ID parameter" );
 					LOG( $"ReceiveRequest() - Respond with 'init' message: {ID}" );
 
 					var response = new CRootMessage {	{ RootMessageKeys.KeyType,		RootMessageKeys.TypeInit },
@@ -96,27 +96,28 @@ namespace CommonLibs.MessagesBroker
 					// Validate ID for this connection
 					ID = request.TryGetString( RootMessageKeys.KeySenderID );
 					if( string.IsNullOrWhiteSpace(ID) )
-						throw new ArgumentNullException( $"Missing '{RootMessageKeys.KeySenderID}' parameter from message" );
+						throw new CommonException( $"Missing '{RootMessageKeys.KeySenderID}' parameter from message" );
 					await ValidateInboundMessages( context, new List<TMessage>() );
 
 					// This object will receive the 'RootMessage' to send to the client as response
 					var completionSource = new TaskCompletionSource<TRootMessage>();
 					CompletionSource = completionSource;
 
-					// Create a timeout to close this connection and avoid keeping it open too long
+					// Create a timeout to close this connection and avoid keeping it open too long (stale connection)
 					var staleCancellation = new System.Threading.CancellationTokenSource();
-					var staleTimeout = Task.Run( async ()=>  // nb: Run asynchroneously
+					Task.Run( async ()=>
 						{
 							await Task.Delay( StaleTimeoutMilisec, staleCancellation.Token );
 							await ResetNow();
-						} );
+						} )
+						.FireAndForget();
 
 					// Register against the broker
 					try
 					{
 						await Broker.RegisterEndpoint( this );
 					}
-					catch( BrokerBase.EndpointAlreadyRegistered ex )
+					catch( BrokerBase.EndpointAlreadyRegisteredException ex )
 					{
 						// This connection has already been registered?
 						// CAN happen when the browser resets the polling connection (e.g. when typing 'ctrl+s' to save the page, all active requests are interrupted)
@@ -143,7 +144,7 @@ namespace CommonLibs.MessagesBroker
 					// Validate ID for this connection
 					ID = request.TryGetString( RootMessageKeys.KeySenderID );
 					if( string.IsNullOrWhiteSpace(ID) )
-						throw new ArgumentNullException( $"Missing '{RootMessageKeys.KeySenderID}' parameter from message" );
+						throw new CommonException( $"Missing '{RootMessageKeys.KeySenderID}' parameter from message" );
 
 					// Validate messages list
 					var messages = ((IEnumerable)request[ RootMessageKeys.KeyMessageMessages ])
@@ -187,10 +188,10 @@ namespace CommonLibs.MessagesBroker
 			}
 		}
 
-		async Task IEndPoint.ReceiveMessages(IEnumerable<TMessage> msgs)
+		async Task IEndPoint.ReceiveMessages(IEnumerable<TMessage> messages)
 		{
 			ASSERT( Broker != null, $"Property '{nameof(Broker)}' is supposed to be set here" );
-			ASSERT( msgs != null, $"Missing parameter '{nameof(msgs)}'" );
+			ASSERT( messages != null, $"Missing parameter '{nameof(messages)}'" );
 
 			var completionSource = System.Threading.Interlocked.Exchange( ref CompletionSource, null );
 			if( completionSource == null )
@@ -199,25 +200,25 @@ namespace CommonLibs.MessagesBroker
 				FAIL( $"Sending messages to a closed connection" );  // nb: CAN happen, but should be exceptional ; If this happens often, something's wrong ...
 
 				// Put the messages back on the queue
-				await Broker.ReceiveMessages( msgs );
+				await Broker.ReceiveMessages( messages );
 				return;
 			}
 
-			var messages = msgs.ToList();
+			var messagesList = messages.ToList();
 			try
 			{
-				await ValidateOutboundMessages( messages );
+				await ValidateOutboundMessages( messagesList );
 			}
 			catch( System.Exception ex )
 			{
 				// 'ValidateOutboundMessages()' is not supposed to fail ... => Sending one single error message instead
 				FAIL( $"{nameof(ValidateOutboundMessages)}() threw an exception ({ex.GetType().FullName}): {ex.Message}" );
 				var errorMessage = Broker.FillException( Broker.NewMessage(), ex );
-				messages = new List<TMessage>{ errorMessage };
+				messagesList = new List<TMessage>{ errorMessage };
 			}
 
 			var response = new CRootMessage {	{ RootMessageKeys.KeyType,		RootMessageKeys.TypeMessages },
-												{ RootMessageKeys.TypeMessages,	messages } };
+												{ RootMessageKeys.TypeMessages,	messagesList } };
 			completionSource.SetResult( response );
 		}
 

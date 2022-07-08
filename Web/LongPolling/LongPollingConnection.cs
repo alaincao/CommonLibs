@@ -53,7 +53,7 @@ namespace CommonLibs.Web.LongPolling
 
 		internal bool					RegisteredInConnectionList				= false;
 		internal HttpContext			HttpContext								{ get; private set; }
-		private AsyncCallback			AsyncCallback;
+		private readonly AsyncCallback	AsyncCallback;
 
 		#region For IConnection
 
@@ -91,14 +91,14 @@ namespace CommonLibs.Web.LongPolling
 		/// This thread will try to create a new thread from the "AsyncCallback(this)".<br/>
 		/// The problem is that "AsyncCallback(this)" will then hang, waiting for a worker slot thread to liberate...
 		/// </remarks>
-		public void SendRootMessage(RootMessage responseMessage)
+		public void SendRootMessage(RootMessage rootMessage)
 		{
-			ASSERT( responseMessage != null, "Missing parameter 'responseMessage'" );
+			ASSERT( rootMessage != null, $"Missing parameter '{nameof(rootMessage)}'" );
 
-			LOG( "SendResponseMessage(" + responseMessage + ") - Start" );
+			LOG( $"SendResponseMessage() - Start" );
 			try
 			{
-				ResponseMessage = responseMessage;
+				ResponseMessage = rootMessage;
 
 				// Declare message as completed
 				int oldIsCompleted = Interlocked.Exchange( ref isCompleted, 1 );
@@ -106,11 +106,11 @@ namespace CommonLibs.Web.LongPolling
 					throw new InvalidOperationException( GetType().FullName + "::" + System.Reflection.MethodInfo.GetCurrentMethod().Name + "() can only be called once" );
 
 				// Invoke callback that will invoke LongPollingHandler.EndProcessRequest()
-				LOG( "SendResponseMessage(" + responseMessage + ") - AsyncCallback is " + (AsyncCallback != null ? "not null" : "null") );
+				LOG( "SendResponseMessage() - AsyncCallback is " + (AsyncCallback != null ? "not null" : "null") );
 				if( AsyncCallback != null )
 					AsyncCallback( this );
 
-				LOG( "SendResponseMessage(" + responseMessage + ") - Exit" );
+				LOG( "SendResponseMessage() - Exit" );
 			}
 			catch( System.Exception ex )
 			{

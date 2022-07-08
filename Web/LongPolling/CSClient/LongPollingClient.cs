@@ -25,8 +25,6 @@ namespace CommonLibs.Web.LongPolling.CSClient
 			var response = await SendHttpRequest( InitMessage, isPollConnection:false );
 
 			var connectionID = response.TryGetString( RootMessage.KeySenderID );
-			if( string.IsNullOrWhiteSpace(connectionID) )
-				throw new ArgumentException( "Invalid 'init' response message: '"+response.ToJSON()+"'" );
 			LOG( "ConnectionID: "+connectionID );
 			if( string.IsNullOrWhiteSpace(connectionID) )
 				throw new ArgumentException( "The server did not return the ConnectionID" );
@@ -146,18 +144,18 @@ namespace CommonLibs.Web.LongPolling.CSClient
 			await Task.FromResult(0);  // NB: Nothing to 'await' here
 		}
 
-		protected internal async override Task SendRootMessage(RootMessage request)
+		protected internal async override Task SendRootMessage(RootMessage rootMessage)
 		{
-			ASSERT( (request != null) && (request.Count > 0), "Missing parameter 'request'" );
+			ASSERT( (rootMessage != null) && (rootMessage.Count > 0), $"Missing parameter '{nameof(rootMessage)}'" );
 
-			request[RootMessage.KeySenderID] = ConnectionID;
-			var response = await SendHttpRequest( request, isPollConnection:false );
+			rootMessage[RootMessage.KeySenderID] = ConnectionID;
+			var response = await SendHttpRequest( rootMessage, isPollConnection:false );
 			var responseType = response[RootMessage.TypeKey] as string;
 			LOG( "Root message received: "+responseType );
 			switch( responseType )
 			{
 				case RootMessage.TypeLogout:
-					throw new ApplicationException( "Logged out" );
+					throw new CommonException( "Logged out" );
 
 				case RootMessage.TypeMessages:
 					// NB: Should be empty

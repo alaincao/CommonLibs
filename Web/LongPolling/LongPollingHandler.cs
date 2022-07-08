@@ -58,7 +58,7 @@ namespace CommonLibs.Web.LongPolling
 			FAIL( "ProcessRequest() - Should not be used by IHttpAsyncHandler" );  // Should only be used by IHttpHandler
 		}
 
-		IAsyncResult IHttpAsyncHandler.BeginProcessRequest(HttpContext context, AsyncCallback callback, object asyncState)
+		IAsyncResult IHttpAsyncHandler.BeginProcessRequest(HttpContext context, AsyncCallback cb, object extraData)
 		{
 			LOG( "BeginProcessRequest() - Start" );
 			ASSERT( MessageHandler != null, "Property 'MessageHandler' is not defined" );
@@ -106,7 +106,7 @@ namespace CommonLibs.Web.LongPolling
 						// Get ConnectionID
 						connectionID = requestMessage.TryGetString( RootMessage.KeySenderID );
 						if( string.IsNullOrEmpty(connectionID) )
-							throw new ApplicationException( "Missing sender ID in message" );
+							throw new CommonException( "Missing sender ID in message" );
 
 						if(! ConnectionList.CheckConnectionIsValid(sessionID, connectionID) )
 						{
@@ -128,7 +128,7 @@ namespace CommonLibs.Web.LongPolling
 						// Get ConnectionID
 						connectionID = requestMessage.TryGetString( RootMessage.KeySenderID );
 						if( string.IsNullOrEmpty(connectionID) )
-							throw new ApplicationException( "Missing ConnectionID in message" );
+							throw new CommonException( "Missing ConnectionID in message" );
 
 						if(! ConnectionList.CheckConnectionIsValid(sessionID, connectionID) )
 						{
@@ -196,7 +196,7 @@ namespace CommonLibs.Web.LongPolling
 			}
 
 			LOG( "BeginProcessRequest() - Creating the LongPollingConnection" );
-			var connection = new LongPollingConnection( sessionID, connectionID, context, callback, asyncState );
+			var connection = new LongPollingConnection( sessionID, connectionID, context, cb, extraData );
 
 			if( responseMessage != null )
 			{

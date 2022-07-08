@@ -271,8 +271,6 @@ namespace CommonLibs.Utils
 
 			if( n == -1 )
 				n = src.Length - srcStartIndex;
-			//for( int i=0; i<n; ++i )
-			//    dst[ dstStartIndex+i ] = src[ dstStartIndex+i ];
 			System.Buffer.BlockCopy( src, srcStartIndex, dst, dstStartIndex, n );
 		}
 
