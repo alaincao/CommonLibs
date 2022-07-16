@@ -51,8 +51,8 @@ namespace CommonLibs.Web.LongPolling
 		public string							SenderConnectionID				{ get { object id; return this.TryGetValue(KeySenderID, out id) ? ""+id : null; } }
 		public string							HandlerType						{ get { object handler; return this.TryGetValue(KeyMessageHandler, out handler) ? ""+handler : null; } }
 
-		private Message() : base()  {}
-		internal Message(IDictionary<string,object> content) : base(content)  {}
+		public Message() : base()  {}
+		public Message(IDictionary<string,object> content) : base(content)  {}
 
 		public override string ToString()
 		{

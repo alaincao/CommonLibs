@@ -1,30 +1,50 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
-using System.Net.Http;
 
 using CommonLibs.Utils;
 using CommonLibs.MessagesBroker.Utils;
 
-namespace CommonLibs.Web.LongPolling.CSClient
+namespace CommonLibs.MessagesBroker.CSClient
 {
-	internal class LongPollingClient : BaseClient
-	{
-		public string			HandlerUrl			{ get; private set; }
-		private HttpClient		PollClient			= null;
+	using TMessage = IDictionary<string,object>;
+	using TRootMessage = IDictionary<string,object>;
 
-		internal LongPollingClient(MessageHandler messageHandler, System.Net.CookieContainer cookies, string handlerUrl) : base(messageHandler, cookies)
+	public class HttpClient : BaseClient
+	{
+		private const string	RootMessageType_Logout		= "logout";  // Was used by legacy versions of the server (ie. the LongPolling one) ; Keep it here for compatibility
+
+		public readonly string						HandlerUrl;
+		public readonly TMessage					InitMessage;
+		public readonly System.Net.CookieContainer	Cookies;
+		private System.Net.Http.HttpClient			PollClient			= null;
+
+		/// <param name="cookies">Contains the ASP.NET session cookie</param>
+		private HttpClient(string handlerUrl, System.Net.CookieContainer cookies, IMessageReceiver messageReceiver=null, TMessage initMessageTemplate=null) : base(messageReceiver)
 		{
-			ASSERT( !string.IsNullOrWhiteSpace(handlerUrl), "Missing parameter 'handlerUrl'" );
+			ASSERT( !string.IsNullOrWhiteSpace(handlerUrl), $"Missing parameter '{nameof(handlerUrl)}'" );
+			ASSERT( cookies != null, $"Missing parameter '{nameof(cookies)}'" );
 
 			HandlerUrl = handlerUrl;
+			Cookies = cookies;
+
+			InitMessage = CreateRootMessage_Init();
+			if( initMessageTemplate != null )
+				foreach( var pair in initMessageTemplate )
+					InitMessage[ pair.Key ] = pair.Value;
+		}
+
+		public static Task<HttpClient> New(string handlerUrl, System.Net.CookieContainer cookies, IMessageReceiver messageReceiver=null, TMessage initMessageTemplate=null)
+		{
+			return Task.FromResult( new HttpClient(handlerUrl, cookies, messageReceiver, initMessageTemplate) );
 		}
 
 		protected async internal override Task<string> SendInitMessage()
 		{
 			var response = await SendHttpRequest( InitMessage, isPollConnection:false );
 
-			var connectionID = response.TryGetString( RootMessage.KeySenderID );
+			var connectionID = response.TryGetString( RootMessageKeys.KeySenderID );
 			if( string.IsNullOrWhiteSpace(connectionID) )
 				throw new ArgumentException( "Invalid 'init' response message: '"+response.ToJSON()+"'" );
 			LOG( "ConnectionID: "+connectionID );
@@ -46,23 +66,23 @@ namespace CommonLibs.Web.LongPolling.CSClient
 					ASSERT( ! string.IsNullOrWhiteSpace(ConnectionID), "Property 'ConnectionID' is supposed to be set here" );
 
 					LOG( "Send POLL request" );
-					var request = CommonLibs.Web.LongPolling.RootMessage.CreateClient_Poll( ConnectionID );
+					var request = CreateRootMessage_Poll( ConnectionID );
 					var response = await SendHttpRequest( request, isPollConnection:true );
 
-					var responseType = response[RootMessage.TypeKey] as string;
+					var responseType = response[RootMessageKeys.KeyType] as string;
 					LOG( "Root message received: "+responseType );
 					switch( responseType )
 					{
-						case RootMessage.TypeReset:
+						case RootMessageKeys.TypeReset:
 							// TCP connection refresh asked (just send another request)
 							continue;
 
-						case RootMessage.TypeLogout:
+						case RootMessageType_Logout:
 							// Terminate MainLoop
 							goto EXIT_LOOP;
 
-						case RootMessage.TypeMessages:
-							ReceiveMessages( response );
+						case RootMessageKeys.TypeMessages:
+							ReceiveMessages( response ).FireAndForget();
 							break;
 
 						default:
@@ -80,15 +100,15 @@ namespace CommonLibs.Web.LongPolling.CSClient
 						// Error received while closing the connections => No need to report
 						break;
 					default:
-						TriggerInternalError( "Error while reading message from the HTTP request", ex );
+						await OnInternalError.Invoke( "Error while reading message from the HTTP request", ex );
 						break;
 				}
 			}
 
-			Stop();
+			await Stop();
 		}
 
-		private async Task<RootMessage> SendHttpRequest(RootMessage rootMessage, bool isPollConnection)
+		private async Task<IDictionary<string,object>> SendHttpRequest(TRootMessage rootMessage, bool isPollConnection)
 		{
 			ASSERT( (rootMessage != null) && (rootMessage.Count > 0), "Missing parameter 'rootMessage'" );
 			ASSERT( ! string.IsNullOrWhiteSpace(HandlerUrl), "Property 'HandlerUrl' is supposed to be set here" );
@@ -96,8 +116,8 @@ namespace CommonLibs.Web.LongPolling.CSClient
 			string strResponse;
 			try
 			{
-				using( var handler = new HttpClientHandler(){ CookieContainer = Cookies } )
-				using( var client = new HttpClient(handler){ Timeout = System.Threading.Timeout.InfiniteTimeSpan } )
+				using( var handler = new System.Net.Http.HttpClientHandler(){ CookieContainer = Cookies } )
+				using( var client = new System.Net.Http.HttpClient(handler){ Timeout = System.Threading.Timeout.InfiniteTimeSpan } )
 				{
 					if( isPollConnection )
 					{
@@ -114,7 +134,7 @@ namespace CommonLibs.Web.LongPolling.CSClient
 					}
 
 					var strMessage = rootMessage.ToJSON();
-					var content = new StringContent( strMessage, Encoding.UTF8, "application/json" );
+					var content = new System.Net.Http.StringContent( strMessage, Encoding.UTF8, "application/json" );
 					var response = await client.PostAsync( HandlerUrl, content );
 
 					LOG( "Receive response content" );
@@ -128,10 +148,17 @@ namespace CommonLibs.Web.LongPolling.CSClient
 					ASSERT( PollClient != null, "Property 'PollClient' is supposed to be set here" );
 					PollClient = null;
 				}
-
 			}
-			var responseMessage = CommonLibs.Web.LongPolling.RootMessage.CreateClient_ServerResponse( strResponse.FromJSONDictionary() );
-			return responseMessage;
+			try
+			{
+				var responseMessage = strResponse.FromJSONDictionary();
+				return responseMessage;
+			}
+			catch( Newtonsoft.Json.JsonReaderException jsonEx )
+			{
+				// Error parsing the server's response: Adding the full document to the exception message for ease of debugging
+				throw new ApplicationException( "Invalid server's response:\n"+strResponse, innerException:jsonEx );
+			}
 		}
 
 		protected internal async override Task CloseConnection(string connectionID)
@@ -146,22 +173,22 @@ namespace CommonLibs.Web.LongPolling.CSClient
 			await Task.FromResult(0);  // NB: Nothing to 'await' here
 		}
 
-		protected internal async override Task SendRootMessage(RootMessage request)
+		protected internal override async Task SendRootMessage(IDictionary<string, object> request)
 		{
 			ASSERT( (request != null) && (request.Count > 0), "Missing parameter 'request'" );
 
-			request[RootMessage.KeySenderID] = ConnectionID;
+			request[RootMessageKeys.KeySenderID] = ConnectionID;
 			var response = await SendHttpRequest( request, isPollConnection:false );
-			var responseType = response[RootMessage.TypeKey] as string;
+			var responseType = response[RootMessageKeys.KeyType] as string;
 			LOG( "Root message received: "+responseType );
 			switch( responseType )
 			{
-				case RootMessage.TypeLogout:
+				case RootMessageType_Logout:
 					throw new ApplicationException( "Logged out" );
 
-				case RootMessage.TypeMessages:
+				case RootMessageKeys.TypeMessages:
 					// NB: Should be empty
-					ReceiveMessages( response );
+					ReceiveMessages( response ).FireAndForget();
 					break;
 
 				default:

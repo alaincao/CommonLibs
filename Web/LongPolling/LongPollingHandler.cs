@@ -30,11 +30,11 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Web;
 using System.Web.SessionState;
 
-using CommonLibs.Web.LongPolling.Utils;
+using CommonLibs.Utils;
+using CommonLibs.MessagesBroker.Utils;
 
 namespace CommonLibs.Web.LongPolling
 {
@@ -246,6 +246,7 @@ namespace CommonLibs.Web.LongPolling
 				var exceptionMessage = RootMessage.CreateServer_Exception( ex );
 				str = exceptionMessage.ToJSON();
 			}
+			connection.HttpContext.Response.ContentType = "application/json";
 			connection.HttpContext.Response.Write( str );
 
 			if( connection.RegisteredInConnectionList )

@@ -68,17 +68,25 @@ namespace CommonLibs.Utils.Event
 			if( (oldValue == null) != (value == null) )
 			{
 				availableChanged = true;
-				if( AvailableChanged != null )
-					E.E( AvailableChanged );
+				TriggerAvailableChanged();
 			}
 
+			if( availableChanged )
+				TriggerValueChanged();
+			else if( (value != null) && (oldValue != null) && (!value.Equals(oldValue)) )
+				TriggerValueChanged();
+		}
+
+		public void TriggerAvailableChanged()
+		{
+			if( AvailableChanged != null )
+				E.E( AvailableChanged );
+		}
+
+		public void TriggerValueChanged()
+		{
 			if( ValueChanged != null )
-			{
-				if( availableChanged )
-					E.E( ValueChanged );
-				else if( (value != null) && (oldValue != null) && (!value.Equals(oldValue)) )
-					E.E( ValueChanged );
-			}
+				E.E( ValueChanged );
 		}
 
 		private bool GetAvailable()

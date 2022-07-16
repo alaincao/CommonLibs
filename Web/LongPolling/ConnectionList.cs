@@ -674,14 +674,18 @@ namespace CommonLibs.Web.LongPolling
 				CheckValidity();
 
 				// Get the ConnectionEntry
-				var connectionEntry = AllConnections[ connectionID ];
-
+				var connectionEntry = AllConnections.TryGet( connectionID );
+				if( connectionEntry == null )
+				{
+					FAIL( "UnregisterConnection(" + connectionID + ") - Connection seems already unregistered" );
+					goto EXIT;
+				}
 				if( connectionEntry.Connection != connection )
 				{
 					FAIL( (connectionEntry.Connection == null) ?
 							("UnregisterConnection(" + connectionID + ") - There is no registered connection for this ConnectionID") :
 							("UnregisterConnection(" + connectionID + ") - The specified connection is not the registered one") );
-					return;
+					goto EXIT;
 				}
 				connectionEntry.Connection = null;
 
@@ -705,6 +709,7 @@ namespace CommonLibs.Web.LongPolling
 
 				CheckValidity();
 			}
+		EXIT:
 
 			LOG( "UnregisterConnection(" + connectionID + ") - Exit" );
 		}

@@ -1,4 +1,4 @@
-//
+﻿//
 // CommonLibs/Utils/Event/TriggerThrottler.cs
 //
 // Author:
@@ -27,8 +27,6 @@
 //
 
 using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -52,10 +50,10 @@ namespace CommonLibs.Utils.Event
 
 		public void Trigger()
 		{
-			Trigger( fromTimer:false );
+			Trigger( fromTimer:false ).FireAndForget();
 		}
 
-		public async void TriggerAsync()
+		public async Task TriggerAsync()
 		{
 			await Trigger( fromTimer:false );
 		}
@@ -68,6 +66,10 @@ namespace CommonLibs.Utils.Event
 
 			lock( LockObject )
 			{
+				if( (! fromTimer) && (Timer != null) )
+					// Throttling launched in the mean-time (very unlikely) => Discard
+					goto DISCARD;
+
 				var now = DateTime.UtcNow.Ticks;
 
 				if( fromTimer )
@@ -80,7 +82,7 @@ namespace CommonLibs.Utils.Event
 					{
 						// Previous invokation not yet terminated => Redelay this one
 						var timerMiliseconds = ((long)DelayTicks / TimeSpan.TicksPerMillisecond);
-						Timer = new System.Threading.Timer( (state)=>{ Trigger(fromTimer:true); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
+						Timer = new System.Threading.Timer( (state)=>{ Trigger(fromTimer:true).FireAndForget(); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
 						goto DISCARD;
 					}
 
@@ -90,12 +92,11 @@ namespace CommonLibs.Utils.Event
 				}
 				else if( (now - LastTriggerTick) < DelayTicks )
 				{
-			START_TIMER:
 					// Delay not yet elapsed => Start the timer
 					var timerTicks = DelayTicks - (now - LastTriggerTick);
 					var timerMiliseconds = ( timerTicks / TimeSpan.TicksPerMillisecond );
 					CommonLibs.Utils.Debug.ASSERT( timerMiliseconds >= 0, this, "Logic error" );
-					Timer = new System.Threading.Timer( (state)=>{ Trigger(fromTimer:true); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
+					Timer = new System.Threading.Timer( (state)=>{ Trigger(fromTimer:true).FireAndForget(); }, state:null, dueTime:timerMiliseconds, period:Timeout.Infinite );
 					goto DISCARD;
 				}
 				else
@@ -109,8 +110,9 @@ namespace CommonLibs.Utils.Event
 					StillRunning = true;
 					goto INVOKE_CALLBACK;
 				}
-
-				CommonLibs.Utils.Debug.ASSERT( false, this, "Unreachable code reached" );
+				#pragma warning disable 0162  // warning CS0162: Unreachable code detected
+				CommonLibs.Utils.Debug.ASSERT( false, this, "Unreachable code reached" );  // All code paths should explicitely say what to do
+				#pragma warning restore 0162
 			}
 		DISCARD:
 			return;

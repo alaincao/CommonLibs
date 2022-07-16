@@ -30,8 +30,10 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Web;
+using System.Threading.Tasks;
+
+using CommonLibs.Utils;
 
 namespace CommonLibs.Web.LongPolling.Utils
 {
@@ -321,14 +323,16 @@ namespace CommonLibs.Web.LongPolling.Utils
 
 					var nextProgressMessage = DateTime.Now + NotificationInterval;
 					var streamParser = new HtmlPostedMultipartStreamParser( context.Request );
-					streamParser.OnNewFile += (uploadFileName)=>
+					streamParser.OnNewFile.Add( (uploadFileName)=>
 						{
 							CheckConcurrentOperations( context );
 							outStream = GetUploadStream( context.Request, uploadFileName, out fileName, out onUploadTerminatedCallback );
 							ASSERT( !string.IsNullOrEmpty(fileName), "'GetUploadStream()' did not set the 'fileName'" );
 							SendNewFileMessage( fileName );
-						};
-					streamParser.OnFileContentReceived += (buffer, n)=>
+
+							return Task.CompletedTask;
+						} );
+					streamParser.OnFileContentReceived.Add( (buffer, n)=>
 						{
 							CheckConcurrentOperations( context );
 							outStream.Write( buffer, 0, n );
@@ -343,15 +347,19 @@ namespace CommonLibs.Web.LongPolling.Utils
 								SendUploadProgressMessage( fileName, streamParser.CurrentLength, streamParser.ContentLength );
 								nextProgressMessage = now + NotificationInterval;
 							}
-						};
-					streamParser.OnEndOfFile += ()=>
+
+							return Task.CompletedTask;
+						} );
+					streamParser.OnEndOfFile.Add( ()=>
 						{
 							CheckConcurrentOperations( context );
 							outStream.Close();
 							outStream.Dispose();
 							outStream = null;
-						};
-					streamParser.ProcessContext( context );
+
+							return Task.CompletedTask;
+						} );
+					Sigma.Util.WaitAsync( ()=>streamParser.ProcessContext(context) );
 					if( outStream != null )
 					{
 						FAIL( "'streamParser.OnEndOfFile' has not been called" );
