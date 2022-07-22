@@ -140,7 +140,7 @@ namespace CommonLibs.MessagesBroker
 		public async Task ReceiveMessages(IEnumerable<TMessage> messages)
 		{
 			ASSERT( messages != null, $"Missing parameter '{nameof(messages)}'" );
-			ASSERT( messages.Any(v=>string.IsNullOrWhiteSpace(v.TryGetString(MessageKeys.KeyReceiverID))), $"There are messages without '{MessageKeys.KeyReceiverID}' defined" );
+			ASSERT( ! messages.Any(v=>string.IsNullOrWhiteSpace(v.TryGetString(MessageKeys.KeyReceiverID))), $"There are messages without '{MessageKeys.KeyReceiverID}' defined" );
 
 			var messagesToSave = (new{ EndPointID=(string)null, Messages=(List<TMessage>)null }).NewAnonymousList();
 			var messagesToSend = (new{ EndPoint=(IEndPoint)null, Messages=(List<TMessage>)null }).NewAnonymousList();
