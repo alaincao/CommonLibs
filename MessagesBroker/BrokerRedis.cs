@@ -51,22 +51,28 @@ namespace CommonLibs.MessagesBroker
 			DeserializeMessages	= (str)=>str.FromJSON<List<CMessage>>();
 		}
 
-		public Task Start(string connectionString)
+		public async Task Start(string connectionString)
 		{
 			ASSERT( !string.IsNullOrWhiteSpace(connectionString), $"Missing parameter '{nameof(connectionString)}'" );
 
-			Connection = ConnectionMultiplexer.Connect( connectionString );
-
-			LaunchSubscribe();
-			return Task.CompletedTask;
+			var connection = ConnectionMultiplexer.Connect( connectionString );
+			await Start( connection );
 		}
 
-		private void LaunchSubscribe()
+		public async Task Start(ConnectionMultiplexer connection)
+		{
+			ASSERT( connection != null, $"Missing parameter '{nameof(connection)}'" );
+
+			Connection = connection;
+			await LaunchSubscribe();
+		}
+
+		private async Task LaunchSubscribe()
 		{
 			var keySpacePrefix = $"__keyspace@0__:{KeysPrefix}";
 
 			var subscriber = Connection.GetSubscriber();
-			subscriber.Subscribe( keySpacePrefix+"*", async (c,v)=>
+			await subscriber.SubscribeAsync( keySpacePrefix+"*", async (c,v)=>
 				{
 					try
 					{
